@@ -6,6 +6,7 @@ use humhub\widgets\RichText;
 use humhub\modules\user\widgets\Image as UserImage;
 use humhub\modules\file\widgets\ShowFiles;
 use humhub\modules\like\widgets\LikeLink;
+use yii\helpers\Url;
 ?>
 
 <div class="media" id="comment_<?= $comment->id; ?>"
