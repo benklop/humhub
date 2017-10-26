@@ -46,7 +46,7 @@ use humhub\modules\like\widgets\LikeLink;
     <div>
         <div class="media-body">
             <h4 class="media-heading"><?= Html::containerLink($user); ?>
-                <small><?= TimeAgo::widget(['timestamp' => $createdAt]); ?>
+                <small><a href="<?= Url::to(['/comment/comment/show', 'contentModel' => $objectModel, 'contentId' => $objectId]) ?>"><?= TimeAgo::widget(['timestamp' => $createdAt]); ?></a>
                     <?php if ($updatedAt !== null): ?>
                         &middot; <span class="tt" title="<?= Yii::$app->formatter->asDateTime($updatedAt); ?>"><?= Yii::t('ContentModule.base', 'Updated'); ?></span>
                     <?php endif; ?>

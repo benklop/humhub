@@ -78,7 +78,7 @@ use yii\helpers\Url;
                     </div>
                 </div>
                 <div class="media-subheading">
-                    <a href="<?= Url::to(['/content/perma', 'id' => $content->id], true) ?>"><?= TimeAgo::widget(['timestamp' => $createdAt]); ?></a>
+                    <a href="<?= Url::to(['/content/perma', 'id' => $object->content->id], true) ?>"><?= TimeAgo::widget(['timestamp' => $createdAt]); ?></a>
                     <?php if ($updatedAt !== null) : ?>
                         &middot;
                         <span class="tt" title="<?= Yii::$app->formatter->asDateTime($updatedAt); ?>"><?= Yii::t('ContentModule.base', 'Updated'); ?></span>
