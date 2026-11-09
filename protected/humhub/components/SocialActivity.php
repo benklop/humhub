@@ -8,13 +8,21 @@
 
 namespace humhub\components;
 
-use Yii;
-use yii\helpers\Html;
-use humhub\modules\user\models\User;
+use Exception;
+use humhub\components\behaviors\PolymorphicRelation;
+use humhub\helpers\Html;
+use humhub\modules\comment\models\Comment;
 use humhub\modules\content\components\ContentContainerActiveRecord;
-use humhub\modules\space\models\Space;
 use humhub\modules\content\interfaces\ContentOwner;
-use humhub\widgets\RichText;
+use humhub\modules\content\interfaces\ContentProvider;
+use humhub\modules\content\models\Content;
+use humhub\modules\content\widgets\richtext\converter\RichTextToShortHtmlConverter;
+use humhub\modules\space\models\Space;
+use humhub\modules\user\models\User;
+use Yii;
+use yii\base\BaseObject;
+use yii\helpers\Json;
+use yii\helpers\Url;
 
 /**
  * This class represents a social Activity triggered within the network.
@@ -29,9 +37,8 @@ use humhub\widgets\RichText;
  * @since 1.1
  * @author buddha
  */
-abstract class SocialActivity extends \yii\base\Object implements rendering\Viewable, \Serializable
+abstract class SocialActivity extends BaseObject implements rendering\Viewable
 {
-
     /**
      * User which performed the activity.
      *
@@ -40,11 +47,23 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
     public $originator;
 
     /**
+     * @var bool ensure originator existence
+     * @since 1.3
+     */
+    public $requireOriginator = true;
+
+    /**
      * The source instance which created this activity
      *
-     * @var \yii\db\ActiveRecord
+     * @var ActiveRecord
      */
     public $source;
+
+    /**
+     * @var bool ensure source existence
+     * @since 1.3
+     */
+    public $requireSource = true;
 
     /**
      * @var string the module id which this activity belongs to (required)
@@ -56,7 +75,7 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
      * By defining the $recordClass an ActiveRecord will be created automatically within the
      * init function.
      *
-     * @var \yii\db\ActiveRecord The related record for this activitiy
+     * @var ActiveRecord The related record for this activitiy
      */
     public $record;
 
@@ -79,7 +98,7 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
 
         if ($this->recordClass) {
             $this->record = Yii::createObject($this->recordClass);
-            $this->record->class = $this->className();
+            $this->record->class = static::class;
             $this->record->module = $this->moduleId;
         }
     }
@@ -88,7 +107,9 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
      * Static initializer should be prefered over new initialization, since it makes use
      * of Yii::createObject dependency injection/configuration.
      *
+     * @param array $options
      * @return static
+     * @throws \yii\base\InvalidConfigException
      */
     public static function instance($options = [])
     {
@@ -110,7 +131,7 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
 
     /**
      * Builder function for the source.
-     * @param \yii\db\ActiveRecord $source
+     * @param ActiveRecord $source
      * @return $this
      */
     public function about($source)
@@ -148,16 +169,16 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
             'url' => $this->getUrl(),
             'viewable' => $this,
             'html' => $this->html(),
-            'text' => $this->text()
+            'text' => $this->text(),
         ];
 
         return \yii\helpers\ArrayHelper::merge($result, $params);
     }
 
     /**
-     * Returns the related content instance in case the source is of type ContentOwner.
+     * Returns the related content instance in case the source is of type ContentOwner or ContentProvider.
      *
-     * @return \humhub\modules\content\models\Content Content ActiveRecord or null if not related to a ContentOwner source
+     * @return \humhub\modules\content\models\Content Content ActiveRecord or null if not related to a ContentOwner or ContentProvider source
      */
     public function getContent()
     {
@@ -170,6 +191,7 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
 
     /**
      * @return Space related space instance in case the activity source is an related contentcontainer of type space, otherwise null
+     * @throws \yii\base\Exception
      */
     public function getSpace()
     {
@@ -179,7 +201,8 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
     }
 
     /**
-     * @return integer related space id in case the activity source is an related contentcontainer of type space, otherwise null
+     * @return int related space id in case the activity source is an related contentcontainer of type space, otherwise null
+     * @throws \yii\base\Exception
      */
     public function getSpaceId()
     {
@@ -190,13 +213,13 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
 
     /**
      * Determines if this activity is related to a content. This is the case if the activitiy source
-     * is of type ContentOwner.
+     * is of type ContentOwner or ContentProvider (e.g. a content addon like a Like).
      *
-     * @return boolean true if this activity is related to a ContentOwner else false
+     * @return bool true if this activity is related to a ContentOwner or ContentProvider else false
      */
     public function hasContent()
     {
-        return $this->source instanceof ContentOwner;
+        return $this->source instanceof ContentOwner || $this->source instanceof ContentProvider;
     }
 
     /**
@@ -204,12 +227,13 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
      * This is the case if the source is either a ContentContainerActiveRecord itself or a ContentOwner.
      *
      * @return ContentContainerActiveRecord
+     * @throws \yii\base\Exception
      */
     public function getContentContainer()
     {
         if ($this->source instanceof ContentContainerActiveRecord) {
             return $this->source;
-        } else if ($this->hasContent()) {
+        } elseif ($this->hasContent()) {
             return $this->getContent()->getContainer();
         }
 
@@ -219,6 +243,7 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
     /**
      * Url of the origin of this notification
      * If source is a Content / ContentAddon / ContentContainer this will automatically generated.
+     * NOTE: Returned URL must be absolute with scheme
      *
      * @return string
      */
@@ -226,15 +251,17 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
     {
         $url = '#';
 
-        if ($this->hasContent()) {
-            $url = $this->getContent()->getUrl();
-        } elseif ($this->source instanceof ContentContainerActiveRecord) {
+        if ($this->source instanceof Comment) {
             $url = $this->source->getUrl();
+        } elseif ($this->hasContent()) {
+            $url = $this->getContent()->getUrl(true);
+        } elseif ($this->source instanceof ContentContainerActiveRecord) {
+            $url = $this->source->getUrl(true);
         }
 
         // Create absolute URL, for E-Mails
-        if (substr($url, 0, 4) !== 'http') {
-            $url = \yii\helpers\Url::to($url, true);
+        if (!str_starts_with($url, 'http')) {
+            $url = Url::to($url, true);
         }
 
         return $url;
@@ -247,7 +274,7 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
     {
         $html = $this->html();
 
-        return !empty($html) ? strip_tags($html) : null;
+        return !empty($html) ? html_entity_decode(strip_tags($html)) : null;
     }
 
     /**
@@ -263,7 +290,7 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
      */
     public function json()
     {
-        return \yii\helpers\Json::encode($this->asArray());
+        return Json::encode($this->asArray());
     }
 
     /**
@@ -272,9 +299,9 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
     public function asArray(User $user)
     {
         $result = [
-            'class' => $this->className(),
+            'class' => static::class,
             'text' => $this->text(),
-            'html' => $this->html()
+            'html' => $this->html(),
         ];
 
         if ($this->originator) {
@@ -282,7 +309,7 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
         }
 
         if ($this->source) {
-            $result['source_class'] = $this->source->className();
+            $result['source_class'] = PolymorphicRelation::getObjectModel($this->source);
             $result['source_pk'] = $this->source->getPrimaryKey();
             $result['space_id'] = $this->source->getSpaceId();
         }
@@ -293,32 +320,60 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
     /**
      * Build info text about a content
      *
-     * This is a combination a the type of the content with a short preview
+     * This is a combination of the type of the content with a short preview
      * of it.
      *
      * If no $content is provided the contentInfo of $source is returned.
      *
      * @param Content $content
-     * @return string
+     * @return string|null
+     * @throws Exception
      */
-    public function getContentInfo(ContentOwner $content = null, $withContentName = true)
+    public function getContentInfo(?ContentOwner $content = null, $withContentName = true)
     {
         if (!$this->hasContent() && !$content) {
-            return;
-        } else if (!$content) {
+            return null;
+        }
+
+        if (!$content) {
             $content = $this->source;
         }
 
-        $truncatedDescription = RichText::widget([
-            'text' => $content->getContentDescription(),
-            'minimal' => true,
-            'maxLength' => 60
+        $info = $this->getContentPreview($content, 60);
+
+        if (empty($info)) {
+            // e.g. content without any text, like a post containing only an image
+            return Html::encode($content->getContentName());
+        }
+
+        return ($withContentName) ? Html::encode($content->getContentName()) . ' "' . $info . '"' : $info;
+    }
+
+    /**
+     * Returns a short preview text of the content. The max length can be defined by setting
+     * $maxLength (60 by default).
+     *
+     *  If no $content is provided the contentPreview of $source is returned.
+     *
+     * @param ContentOwner $content
+     * @param int $maxLength
+     * @return string|null
+     * @throws Exception
+     */
+    public function getContentPreview(?ContentOwner $content = null, $maxLength = 60)
+    {
+        if (!$this->hasContent() && !$content) {
+            return null;
+        }
+
+        if (!$content) {
+            $content = $this->source;
+        }
+
+        return RichTextToShortHtmlConverter::process($content->getContentDescription(), [
+            RichTextToShortHtmlConverter::OPTION_MAX_LENGTH => $maxLength,
+            RichTextToShortHtmlConverter::OPTION_CACHE_KEY => RichTextToShortHtmlConverter::buildCacheKeyForContent($content),
         ]);
-
-        $trimmed = \humhub\libs\Helpers::trimText($truncatedDescription, 60);
-
-        return ($withContentName) ? Html::encode($content->getContentName()). ' "' . $trimmed . '"' : $trimmed;
-
     }
 
     /**
@@ -326,13 +381,15 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
      * notification source.
      *
      * @param ContentOwner $content
-     * @return type
+     * @return string|null
      */
-    public function getContentName(ContentOwner $content = null)
+    public function getContentName(?ContentOwner $content = null)
     {
         if (!$this->hasContent() && !$content) {
-            return;
-        } else if (!$content) {
+            return null;
+        }
+
+        if (!$content) {
             $content = $this->source;
         }
 
@@ -340,58 +397,79 @@ abstract class SocialActivity extends \yii\base\Object implements rendering\View
     }
 
     /**
-     * Returns a short preview text of the content. The max length can be defined by setting
-     * $maxLength (25 by default).
+     * Validates the existence of required attributes
      *
-     *  If no $content is provided the contentPreview of $source is returned.
-     *
-     * @param Content $content
-     * @return string
+     * @return bool
      */
-    public function getContentPreview(ContentOwner $content = null, $maxLength = 25)
+    public function validate()
     {
-        if (!$this->hasContent() && !$content) {
-            return;
-        } else if (!$content) {
-            $content = $this->source;
+        if (empty($this->source) && $this->requireSource) {
+            return false;
         }
 
-        return RichText::widget([
-            'text' => $content->getContentDescription(),
-            'minimal' => true,
-            'maxLength' => $maxLength
-        ]);
+        if (empty($this->originator) && $this->requireOriginator) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
      * Serializes the $source and $originator fields.
      *
-     * @see ActiveRecord::serialize() for the serialization of your $source
+     * @return array
      * @link http://php.net/manual/en/function.serialize.php
      * @since 1.2
-     * @return string
+     * @see ActiveRecord::serialize() for the serialization of your $source
      */
-    public function serialize()
+    public function __serialize(): array
     {
-        return serialize([
-            'source' => $this->source,
-            'originator' => $this->originator
-        ]);
+        $sourceClass = null;
+        $sourcePk = null;
+
+        if ($this->source) {
+            $sourceClass = $this->source::class;
+            $sourcePk = $this->source->getPrimaryKey();
+        }
+
+        $originatorId = ($this->originator != null) ? $this->originator->id : null;
+
+        return [
+            'sourceClass' => $sourceClass,
+            'sourcePk' => $sourcePk,
+            'originator_id' => $originatorId,
+        ];
     }
 
     /**
      * Unserializes the given string, calls the init() function and sets the $source and $originator fields (and $record indirectyl).
      *
-     * @see ActiveRecord::unserialize() for the serialization of your $source
+     * @param array $serialized
      * @link http://php.net/manual/en/function.unserialize.php
-     * @param string $serialized
+     * @see ActiveRecord::unserialize() for the serialization of your $source
      */
-    public function unserialize($serialized)
+    public function __unserialize($unserializedArr)
     {
         $this->init();
-        $unserializedArr = unserialize($serialized);
-        $this->from($unserializedArr['originator']);
-        $this->about($unserializedArr['source']);
-    }
 
+        if (isset($unserializedArr['originator_id'])) {
+            $user = User::findOne(['id' => $unserializedArr['originator_id']]);
+            if ($user !== null) {
+                $this->from($user);
+            }
+        }
+
+        // Temporary for 1.3.0-beta.2 to 1.3.0-beta.3 updates with existing queue record
+        if (isset($unserializedArr['source'])) {
+            $this->about($unserializedArr['source']);
+        }
+
+        if (!empty($unserializedArr['sourceClass']) && !empty($unserializedArr['sourcePk'])) {
+            $source = PolymorphicRelation::loadActiveRecord($unserializedArr['sourceClass'], $unserializedArr['sourcePk']);
+            if ($source !== null) {
+                $this->about($source);
+            }
+        }
+
+    }
 }

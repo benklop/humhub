@@ -9,26 +9,28 @@
 namespace humhub\modules\user\models;
 
 use humhub\components\ActiveRecord;
+use Yii;
+use yii\db\ActiveQuery;
 
 /**
  * This is the model class for table "profile_field_category".
  *
- * @property integer $id
+ * @property int $id
  * @property string $title
  * @property string $description
- * @property integer $sort_order
- * @property integer $module_id
- * @property integer $visibility
+ * @property int $sort_order
+ * @property int $module_id
+ * @property int $visibility
  * @property string $created_at
- * @property integer $created_by
+ * @property int $created_by
  * @property string $updated_at
- * @property integer $updated_by
+ * @property int $updated_by
  * @property string $translation_category
- * @property integer $is_system
+ * @property int $is_system
+ * @property-read  ProfileField[] $fields
  */
 class ProfileFieldCategory extends ActiveRecord
 {
-
     /**
      * @inheritdoc
      */
@@ -46,7 +48,7 @@ class ProfileFieldCategory extends ActiveRecord
             [['title', 'sort_order'], 'required'],
             [['description'], 'string'],
             [['sort_order', 'module_id', 'visibility', 'is_system'], 'integer'],
-            [['title', 'translation_category'], 'string', 'max' => 255]
+            [['title', 'translation_category'], 'string', 'max' => 255],
         ];
     }
 
@@ -71,6 +73,9 @@ class ProfileFieldCategory extends ActiveRecord
         ];
     }
 
+    /**
+     * @inheritDoc
+     */
     public function beforeDelete()
     {
         if ($this->is_system) {
@@ -93,26 +98,29 @@ class ProfileFieldCategory extends ActiveRecord
             return $this->translation_category;
         }
 
-        return "UserModule.models_ProfileFieldCategory";
+        return "UserModule.profile";
     }
 
+    /**
+     * @return ActiveQuery
+     */
     public function getFields()
     {
-        $query = $this->hasMany(ProfileField::className(), ['profile_field_category_id' => 'id']);
+        $query = $this->hasMany(ProfileField::class, ['profile_field_category_id' => 'id']);
         $query->orderBy('sort_order');
         return $query;
     }
 
     /**
      * Internal
-     * 
+     *
      * Just holds message labels for the Yii Message Command
      */
     private function translationOnly()
     {
-        Yii::t('UserModule.models_ProfileFieldCategory', 'General');
-        Yii::t('UserModule.models_ProfileFieldCategory', 'Communication');
-        Yii::t('UserModule.models_ProfileFieldCategory', 'Social bookmarks');
+        Yii::t('UserModule.profile', 'General');
+        Yii::t('UserModule.profile', 'Communication');
+        Yii::t('UserModule.profile', 'Social bookmarks');
     }
 
 }

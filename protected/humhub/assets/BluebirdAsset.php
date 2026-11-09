@@ -8,29 +8,42 @@
 
 namespace humhub\assets;
 
-use yii\web\AssetBundle;
+use humhub\components\assets\AssetBundle;
+use humhub\components\View;
 
 /**
- * jquery-knob
+ * bluebird promis library
  *
  * @author luke
  */
 class BluebirdAsset extends AssetBundle
 {
+    /**
+     * @inheritdoc
+     */
+    public $defer = false;
 
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/bluebird';
+    public $jsPosition = View::POS_HEAD;
+
+    /**
+     * @inheritdoc
+     */
+    public $sourcePath = '@npm/bluebird';
+
+    /**
+     * @inheritdoc
+     */
+    public $publishOptions = [
+        'only' => [
+            'js/browser/bluebird.min.js',
+        ],
+    ];
 
     /**
      * @inheritdoc
      */
     public $js = ['js/browser/bluebird.min.js'];
-
-    /**
-     * @inheritdoc
-     */
-    public $css = [];
-
 }

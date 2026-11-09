@@ -8,39 +8,33 @@
 
 namespace humhub\modules\admin\models\forms;
 
+use humhub\modules\topic\jobs\ConvertTopicsToGlobalJob;
+use humhub\modules\user\models\User;
+use humhub\modules\user\Module;
 use Yii;
-use humhub\libs\DynamicConfig;
+use yii\base\Model;
 
 /**
  * AuthenticationSettingsForm
  *
  * @since 0.5
  */
-class AuthenticationSettingsForm extends \yii\base\Model
+class AuthenticationSettingsForm extends Model
 {
-
-    const defaultRegistrationApprovalMailContent = 'Hello {displayName},<br><br>
-Your account has been activated.<br><br>
-Click here to login:<br>
-<a href=\'{loginURL}\'>{loginURL}</a><br><br>
-
-Kind Regards<br>
-{AdminName}<br><br>';
-    const defaultRegistrationDenialMailContent = 'Hello {displayName},<br><br>
-Your account request has been declined.<br><br>
-
-Kind Regards<br>
-{AdminName}<br><br>';
-    
     public $internalAllowAnonymousRegistration;
     public $internalRequireApprovalAfterRegistration;
-    public $internalUsersCanInvite;
-    public $defaultUserGroup;
+    public $internalUsersCanInviteByEmail;
+    public $internalUsersCanInviteByLink;
+    public $showRegistrationUserGroup;
+    public $blockUsers;
+    public $hideOnlineStatus;
     public $defaultUserIdleTimeoutSec;
     public $allowGuestAccess;
     public $defaultUserProfileVisibility;
+    public $registrationSendMessageMailContent;
     public $registrationApprovalMailContent;
     public $registrationDenialMailContent;
+    public $allowUserTopics = true;
 
     /**
      * @inheritdoc
@@ -49,17 +43,24 @@ Kind Regards<br>
     {
         parent::init();
 
-        $settingsManager = Yii::$app->getModule('user')->settings;
+        /* @var $module Module */
+        $module = Yii::$app->getModule('user');
+        $settingsManager = $module->settings;
 
-        $this->internalUsersCanInvite = $settingsManager->get('auth.internalUsersCanInvite');
+        $this->internalUsersCanInviteByEmail = $settingsManager->get('auth.internalUsersCanInviteByEmail');
+        $this->internalUsersCanInviteByLink = $settingsManager->get('auth.internalUsersCanInviteByLink');
         $this->internalRequireApprovalAfterRegistration = $settingsManager->get('auth.needApproval');
         $this->internalAllowAnonymousRegistration = $settingsManager->get('auth.anonymousRegistration');
-        $this->defaultUserGroup = $settingsManager->get('auth.defaultUserGroup');
-        $this->defaultUserIdleTimeoutSec = $settingsManager->get('auth.defaultUserIdleTimeoutSec');
+        $this->showRegistrationUserGroup = $settingsManager->get('auth.showRegistrationUserGroup');
+        $this->blockUsers = $module->allowBlockUsers();
+        $this->hideOnlineStatus = $settingsManager->get('auth.hideOnlineStatus');
+        $this->defaultUserIdleTimeoutSec = $settingsManager->get('auth.defaultUserIdleTimeoutSec', 14400); // 4 hours by default
         $this->allowGuestAccess = $settingsManager->get('auth.allowGuestAccess');
         $this->defaultUserProfileVisibility = $settingsManager->get('auth.defaultUserProfileVisibility');
-        $this->registrationApprovalMailContent = $settingsManager->get('auth.registrationApprovalMailContent', Yii::t('AdminModule.controllers_ApprovalController', self::defaultRegistrationApprovalMailContent));
-        $this->registrationDenialMailContent = $settingsManager->get('auth.registrationDenialMailContent', Yii::t('AdminModule.controllers_ApprovalController', self::defaultRegistrationDenialMailContent));
+        $this->registrationSendMessageMailContent = $settingsManager->get('auth.registrationSendMessageMailContent', ApproveUserForm::getDefaultSendMessageMailContent());
+        $this->registrationApprovalMailContent = $settingsManager->get('auth.registrationApprovalMailContent', ApproveUserForm::getDefaultApprovalMessage());
+        $this->registrationDenialMailContent = $settingsManager->get('auth.registrationDenialMailContent', ApproveUserForm::getDefaultDeclineMessage());
+        $this->allowUserTopics = $settingsManager->get('auth.allowUserTopics', true);
     }
 
     /**
@@ -68,11 +69,11 @@ Kind Regards<br>
     public function rules()
     {
         return [
-            [['internalUsersCanInvite', 'internalAllowAnonymousRegistration', 'internalRequireApprovalAfterRegistration', 'allowGuestAccess'], 'boolean'],
-            ['defaultUserGroup', 'exist', 'targetAttribute' => 'id', 'targetClass' => \humhub\modules\user\models\Group::className()],
-            ['defaultUserProfileVisibility', 'in', 'range' => [1, 2]],
+            [['internalUsersCanInviteByEmail', 'internalUsersCanInviteByLink', 'internalAllowAnonymousRegistration', 'internalRequireApprovalAfterRegistration', 'allowGuestAccess', 'showRegistrationUserGroup', 'blockUsers', 'hideOnlineStatus'], 'boolean'],
+            ['defaultUserProfileVisibility', 'in', 'range' => array_keys(User::getVisibilityOptions(false))],
             ['defaultUserIdleTimeoutSec', 'integer', 'min' => 20],
-            [['registrationApprovalMailContent', 'registrationDenialMailContent'], 'string']
+            [['registrationSendMessageMailContent', 'registrationApprovalMailContent', 'registrationDenialMailContent'], 'string'],
+            [['allowUserTopics'], 'boolean'],
         ];
     }
 
@@ -82,54 +83,92 @@ Kind Regards<br>
     public function attributeLabels()
     {
         return [
-            'internalRequireApprovalAfterRegistration' => Yii::t('AdminModule.forms_AuthenticationSettingsForm', 'Require group admin approval after registration'),
-            'internalAllowAnonymousRegistration' => Yii::t('AdminModule.forms_AuthenticationSettingsForm', 'Anonymous users can register'),
-            'internalUsersCanInvite' => Yii::t('AdminModule.forms_AuthenticationSettingsForm', 'Members can invite external users by email'),
-            'defaultUserGroup' => Yii::t('AdminModule.forms_AuthenticationSettingsForm', 'Default user group for new users'),
-            'defaultUserIdleTimeoutSec' => Yii::t('AdminModule.forms_AuthenticationSettingsForm', 'Default user idle timeout, auto-logout (in seconds, optional)'),
-            'allowGuestAccess' => Yii::t('AdminModule.forms_AuthenticationSettingsForm', 'Allow limited access for non-authenticated users (guests)'),
-            'defaultUserProfileVisibility' => Yii::t('AdminModule.forms_AuthenticationSettingsForm', 'Default user profile visibility'),
-            'registrationApprovalMailContent' => Yii::t('AdminModule.forms_AuthenticationSettingsForm', 'Default content of the registration approval email'),
-            'registrationDenialMailContent' => Yii::t('AdminModule.forms_AuthenticationSettingsForm', 'Default content of the registration denial email'),
+            'internalRequireApprovalAfterRegistration' => Yii::t('AdminModule.user', 'Post-registration approval required'),
+            'internalAllowAnonymousRegistration' => Yii::t('AdminModule.user', 'New users can register'),
+            'internalUsersCanInviteByEmail' => Yii::t('AdminModule.user', 'Members can invite external users by email'),
+            'internalUsersCanInviteByLink' => Yii::t('AdminModule.user', 'Members can invite external users by link'),
+            'showRegistrationUserGroup' => Yii::t('AdminModule.user', 'Show group selection at registration'),
+            'blockUsers' => Yii::t('AdminModule.user', 'Allow users to block each other'),
+            'hideOnlineStatus' => Yii::t('AdminModule.user', 'Hide online status of users'),
+            'defaultUserIdleTimeoutSec' => Yii::t('AdminModule.user', 'Default user idle timeout, auto-logout (in seconds, optional)'),
+            'allowGuestAccess' => Yii::t('AdminModule.user', 'Allow visitors limited access to content without an account (Adds visibility: "Guest")'),
+            'defaultUserProfileVisibility' => Yii::t('AdminModule.user', 'Default user profile visibility'),
+            'registrationSendMessageMailContent' => Yii::t('AdminModule.user', 'Default content of the email when sending a message to the user'),
+            'registrationApprovalMailContent' => Yii::t('AdminModule.user', 'Default content of the registration approval email'),
+            'registrationDenialMailContent' => Yii::t('AdminModule.user', 'Default content of the registration denial email'),
+            'allowUserTopics' => Yii::t('AdminModule.user', 'Allow individual topics on profile content'),
+        ];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function attributeHints()
+    {
+        return [
+            'internalRequireApprovalAfterRegistration' => Yii::t('AdminModule.user', 'If enabled, the Group Manager will need to approve registration.'),
         ];
     }
 
     /**
      * Saves the form
      *
-     * @return boolean
+     * @return bool
      */
     public function save()
     {
-        $settingsManager = Yii::$app->getModule('user')->settings;
+        /* @var $module Module */
+        $module = Yii::$app->getModule('user');
+        $settingsManager = $module->settings;
 
-        $settingsManager->set('auth.internalUsersCanInvite', $this->internalUsersCanInvite);
+        $settingsManager->set('auth.internalUsersCanInviteByEmail', $this->internalUsersCanInviteByEmail);
+        $settingsManager->set('auth.internalUsersCanInviteByLink', $this->internalUsersCanInviteByLink);
         $settingsManager->set('auth.needApproval', $this->internalRequireApprovalAfterRegistration);
         $settingsManager->set('auth.anonymousRegistration', $this->internalAllowAnonymousRegistration);
-        $settingsManager->set('auth.defaultUserGroup', $this->defaultUserGroup);
+        $settingsManager->set('auth.showRegistrationUserGroup', $this->showRegistrationUserGroup);
+        $settingsManager->set('auth.blockUsers', $this->blockUsers);
+        $settingsManager->set('auth.hideOnlineStatus', $this->hideOnlineStatus);
         $settingsManager->set('auth.defaultUserIdleTimeoutSec', $this->defaultUserIdleTimeoutSec);
         $settingsManager->set('auth.allowGuestAccess', $this->allowGuestAccess);
+        $settingsManager->set('auth.allowUserTopics', $this->allowUserTopics);
 
         if ($settingsManager->get('auth.allowGuestAccess')) {
             $settingsManager->set('auth.defaultUserProfileVisibility', $this->defaultUserProfileVisibility);
         }
-        
+
         if ($settingsManager->get('auth.needApproval')) {
-            if(empty($this->registrationApprovalMailContent) || (strcmp($this->registrationApprovalMailContent, Yii::t('AdminModule.controllers_ApprovalController', self::defaultRegistrationApprovalMailContent)) == 0)) {
-                $this->registrationApprovalMailContent = Yii::t('AdminModule.controllers_ApprovalController', self::defaultRegistrationApprovalMailContent);
-                $settingsManager->delete('auth.registrationApprovalMailContent');   
+            if (empty($this->registrationSendMessageMailContent) || $this->registrationSendMessageMailContent === ApproveUserForm::getDefaultSendMessageMailContent()) {
+                $this->registrationSendMessageMailContent = ApproveUserForm::getDefaultSendMessageMailContent();
+                $settingsManager->delete('auth.registrationSendMessageMailContent');
+            } else {
+                $settingsManager->set('auth.registrationSendMessageMailContent', $this->registrationSendMessageMailContent);
+            }
+
+            if (empty($this->registrationApprovalMailContent) || $this->registrationApprovalMailContent === ApproveUserForm::getDefaultApprovalMessage()) {
+                $this->registrationApprovalMailContent = ApproveUserForm::getDefaultApprovalMessage();
+                $settingsManager->delete('auth.registrationApprovalMailContent');
             } else {
                 $settingsManager->set('auth.registrationApprovalMailContent', $this->registrationApprovalMailContent);
             }
-            if(empty($this->registrationDenialMailContent) || strcmp($this->registrationDenialMailContent, Yii::t('AdminModule.controllers_ApprovalController', self::defaultRegistrationDenialMailContent)) == 0) {
-                $this->registrationDenialMailContent = Yii::t('AdminModule.controllers_ApprovalController', self::defaultRegistrationDenialMailContent);
-                $settingsManager->delete('auth.registrationDenialMailContent');   
+
+            if (empty($this->registrationDenialMailContent) || $this->registrationDenialMailContent === ApproveUserForm::getDefaultDeclineMessage()) {
+                $this->registrationDenialMailContent = ApproveUserForm::getDefaultDeclineMessage();
+                $settingsManager->delete('auth.registrationDenialMailContent');
             } else {
                 $settingsManager->set('auth.registrationDenialMailContent', $this->registrationDenialMailContent);
             }
+
+            ApproveUserForm::publishMessageFiles($this->registrationSendMessageMailContent);
+            ApproveUserForm::publishMessageFiles($this->registrationApprovalMailContent);
+            ApproveUserForm::publishMessageFiles($this->registrationDenialMailContent);
         }
 
-        DynamicConfig::rewrite();
+        if (!$this->allowUserTopics) {
+            Yii::$app->queue->push(new ConvertTopicsToGlobalJob([
+                'containerType' => User::class,
+            ]));
+        }
+
         return true;
     }
 

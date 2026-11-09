@@ -21,7 +21,6 @@ use yii\base\Model;
  */
 class UploadProfileImage extends Model
 {
-
     /**
      * @var String uploaded image
      */
@@ -34,10 +33,10 @@ class UploadProfileImage extends Model
      */
     public function rules()
     {
-        return array(
-            array('image', 'required'),
-            array('image', 'file', 'extensions' => 'jpg, png, jpeg, tiff', 'maxSize' => 3 * 1024 * 1024),
-        );
+        return [
+            ['image', 'required'],
+            ['image', 'file', 'extensions' => 'jpg, jpeg, png, tiff', 'maxSize' => Yii::$app->getModule('file')->settings->get('maxFileSize')],
+        ];
     }
 
     /**
@@ -45,9 +44,9 @@ class UploadProfileImage extends Model
      */
     public function attributeLabels()
     {
-        return array(
+        return [
             'image' => Yii::t('base', 'New profile image'),
-        );
+        ];
     }
 
 }

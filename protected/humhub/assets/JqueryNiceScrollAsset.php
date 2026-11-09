@@ -8,7 +8,7 @@
 
 namespace humhub\assets;
 
-use yii\web\AssetBundle;
+use humhub\components\assets\AssetBundle;
 
 /**
  * jQuery-nicescroll
@@ -17,15 +17,14 @@ use yii\web\AssetBundle;
  */
 class JqueryNiceScrollAsset extends AssetBundle
 {
+    /**
+     * @inheritdoc
+     */
+    public $sourcePath = '@humhub/resources';
 
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/jquery-nicescroll';
-
-    /**
-     * @inheritdoc
-     */
-    public $js = ['jquery.nicescroll.min.js'];
+    public $js = ['js/jquery.nicescroll.min.js'];
 
 }

@@ -1,70 +1,91 @@
 <?php
 
-/**
- * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
- * @license https://www.humhub.com/licences
- */
-
 namespace humhub\modules\activity;
 
-use Yii;
-use yii\base\Object;
+use humhub\helpers\ControllerHelper;
+use humhub\models\RecordMap;
 use humhub\modules\activity\components\MailSummary;
 use humhub\modules\activity\jobs\SendMailSummary;
 use humhub\modules\activity\models\Activity;
+use humhub\modules\admin\permissions\ManageSettings;
+use humhub\modules\admin\widgets\SettingsMenu;
+use humhub\modules\content\components\ContentActiveRecord;
+use humhub\modules\content\components\ContentContainerActiveRecord;
+use humhub\modules\content\models\Content;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\modules\user\models\User;
+use humhub\modules\user\widgets\AccountMenu;
+use Throwable;
+use Yii;
+use yii\base\ActionEvent;
+use yii\base\BaseObject;
 use yii\base\Event;
-use yii\db\ActiveRecord;
+use yii\db\StaleObjectException;
 
-/**
- * Events provides callbacks to handle events.
- *
- * @author luke
- */
-class Events extends Object
+class Events extends BaseObject
 {
-
     /**
-     * Handles cron run event to send mail summaries to the users
+     * Handles cron hourly run event to send mail summaries to the users
      *
-     * @param \yii\base\ActionEvent $event
+     * @param ActionEvent $event
      */
-    public static function onCronRun($event)
+    public static function onCronHourlyRun($event)
     {
-        if (Yii::$app->controller->action->id == 'hourly') {
-            Yii::$app->queue->push(new SendMailSummary(['interval' => MailSummary::INTERVAL_HOURY]));
-        } elseif (Yii::$app->controller->action->id == 'daily') {
-            Yii::$app->queue->push(new SendMailSummary(['interval' => MailSummary::INTERVAL_DAILY]));
-            if (date('N') == Yii::$app->getModule('activity')->weeklySummaryDay) {
-                Yii::$app->queue->push(new SendMailSummary(['interval' => MailSummary::INTERVAL_WEEKLY]));
-            }
+        if (static::getModule()->enableMailSummaries) {
+            Yii::$app->queue->push(new SendMailSummary(['interval' => MailSummary::INTERVAL_HOURLY]));
         }
     }
 
     /**
-     * On delete of some active record, check if there are related activities and delete them.
+     * Handles cron daily run event to send mail summaries to the users
      *
-     * @param Event $event
+     * @param ActionEvent $event
      */
-    public static function onActiveRecordDelete(Event $event)
+    public static function onCronDailyRun($event)
     {
-        if (!($event->sender instanceof ActiveRecord)) {
-            throw new \LogicException('The handler can be applied only to the \yii\db\ActiveRecord.');
-        }
-
-        /** @var \yii\db\ActiveRecord $activeRecordModel */
-        $activeRecordModel = $event->sender;
-        $pk = $activeRecordModel->getPrimaryKey();
-
-        // Check if primary key exists and is not array (multiple pk)
-        if ($pk !== null && !is_array($pk)) {
-            $modelsActivity = Activity::find()->where([
-                'object_id' => $pk,
-                'object_model' => $activeRecordModel::className(),
-            ])->each();
-            foreach ($modelsActivity as $activity) {
-                $activity->delete();
+        $module = static::getModule();
+        if ($module->enableMailSummaries) {
+            Yii::$app->queue->push(new SendMailSummary(['interval' => MailSummary::INTERVAL_DAILY]));
+            if (date('w') === (string)$module->weeklySummaryDay) {
+                Yii::$app->queue->push(new SendMailSummary(['interval' => MailSummary::INTERVAL_WEEKLY]));
             }
+            if (date('j') === (string)$module->monthlySummaryDay) {
+                Yii::$app->queue->push(new SendMailSummary(['interval' => MailSummary::INTERVAL_MONTHLY]));
+            }
+        }
+    }
+
+    public static function onAccountMenuInit($event)
+    {
+        if (static::getModule()->enableMailSummaries) {
+            /** @var AccountMenu $menu */
+            $menu = $event->sender;
+
+            $menu->addEntry(new MenuLink([
+                'label' => Yii::t('ActivityModule.base', 'E-Mail Summaries'),
+                'id' => 'account-settings-emailsummary',
+                'icon' => 'envelope',
+                'url' => ['/activity/user'],
+                'sortOrder' => 105,
+                'isActive' => ControllerHelper::isActivePath('activity'),
+            ]));
+        }
+    }
+
+
+    public static function onSettingsMenuInit($event)
+    {
+        if (static::getModule()->enableMailSummaries) {
+            /** @var SettingsMenu $menu */
+            $menu = $event->sender;
+
+            $menu->addEntry(new MenuLink([
+                'label' => Yii::t('ActivityModule.base', 'E-Mail Summaries'),
+                'url' => ['/activity/admin/defaults'],
+                'sortOrder' => 300,
+                'isActive' => ControllerHelper::isActivePath('activity', 'admin', 'defaults'),
+                'isVisible' => Yii::$app->user->can(ManageSettings::class),
+            ]));
         }
     }
 
@@ -72,6 +93,8 @@ class Events extends Object
      * Callback to validate module database records.
      *
      * @param Event $event
+     * @throws Throwable
+     * @throws StaleObjectException
      */
     public static function onIntegrityCheck($event)
     {
@@ -79,29 +102,72 @@ class Events extends Object
         $integrityController->showTestHeadline('Activity Module (' . Activity::find()->count() . ' entries)');
 
         // Loop over all comments
-        foreach (Activity::find()->all() as $a) {
+        foreach (Activity::find()->each() as $a) {
+            /** @var Activity $a */
 
-            // Check for object_model / object_id
-            if ($a->object_model != '' && $a->object_id != '' && $a->getSource() === null) {
-                if ($integrityController->showFix('Deleting activity id ' . $a->id . ' without existing target! (' . $a->object_model . ')')) {
-                    $a->delete();
-                }
-            }
-
-            // Check for moduleId is set
-            if ($a->module == '') {
-                if ($integrityController->showFix('Deleting activity id ' . $a->id . ' without module_id!')) {
-                    $a->delete();
-                }
-            }
+            // ToDo: Class has all dependencies
 
             // Check Activity class exists
-            if (!class_exists($a->class)) {
-                if ($integrityController->showFix('Deleting activity id ' . $a->id . ' class not exists! (' . $a->class . ')')) {
-                    $a->delete();
-                }
+            if (!class_exists($a->class) && $integrityController->showFix('Deleting activity id ' . $a->id . ' class not exists! (' . $a->class . ')')) {
+                $a->delete();
             }
         }
     }
+
+    /**
+     * @return Module
+     */
+    private static function getModule()
+    {
+        return Yii::$app->getModule('activity');
+    }
+
+    public static function onBeforeRecordMapDelete($event)
+    {
+        /** @var RecordMap $recordMap */
+        $recordMap = $event->sender;
+
+        foreach (Activity::findAll(['content_addon_record_id' => $recordMap->id]) as $activity) {
+            $activity->delete();
+        }
+
+        return true;
+    }
+
+    public static function onBeforeContentContainerDelete($event): bool
+    {
+        /** @var ContentContainerActiveRecord $record */
+        $record = $event->sender;
+
+        foreach (Activity::findAll(['activity.contentcontainer_id' => $record->contentcontainer_id]) as $activity) {
+            $activity->delete();
+        }
+
+        return true;
+    }
+    public static function onBeforeContentRecordDelete($event)
+    {
+        /** @var Content $record */
+        $record = $event->sender;
+
+        foreach (Activity::findAll(['content_id' => $record->content->id]) as $activity) {
+            $activity->delete();
+        }
+
+        return true;
+    }
+
+    public static function onBeforeUserDelete($event)
+    {
+        /** @var User $record */
+        $record = $event->sender;
+
+        foreach (Activity::findAll(['activity.created_by' => $record->id]) as $activity) {
+            $activity->delete();
+        }
+
+        return true;
+    }
+
 
 }

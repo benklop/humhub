@@ -17,7 +17,6 @@ use yii\web\AssetBundle;
  */
 class CaretjsAsset extends AssetBundle
 {
-
     /**
      * @inheritdoc
      */
@@ -27,10 +26,4 @@ class CaretjsAsset extends AssetBundle
      * @inheritdoc
      */
     public $js = ['dist/jquery.caret.min.js'];
-
-    /**
-     * @inheritdoc
-     */
-    public $css = [];
-
 }

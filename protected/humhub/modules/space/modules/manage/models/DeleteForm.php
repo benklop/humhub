@@ -8,9 +8,9 @@
 
 namespace humhub\modules\space\modules\manage\models;
 
+use humhub\modules\user\components\CheckPasswordValidator;
 use Yii;
 use yii\base\Model;
-use humhub\modules\user\components\CheckPasswordValidator;
 
 /**
  * Form Model for Space Deletion
@@ -19,21 +19,28 @@ use humhub\modules\user\components\CheckPasswordValidator;
  */
 class DeleteForm extends Model
 {
+    /**
+     * @var string the space name to check
+     */
+    public $spaceName;
+
 
     /**
-     * @var string users password
+     * @var string the space name given by the user
      */
-    public $currentPassword;
+    public $confirmSpaceName;
+
 
     /**
      * @inheritdoc
      */
     public function rules()
     {
-        return array(
-            array('currentPassword', 'required'),
-            array('currentPassword', CheckPasswordValidator::className()),
-        );
+        return [
+            ['confirmSpaceName', 'required'],
+            ['confirmSpaceName', 'compare', 'compareValue' => $this->spaceName,
+                'message' => Yii::t('SpaceModule.base', 'Incorrect name, try again.')],
+        ];
     }
 
     /**
@@ -41,9 +48,9 @@ class DeleteForm extends Model
      */
     public function attributeLabels()
     {
-        return array(
-            'currentPassword' => Yii::t('SpaceModule.forms_SpaceDeleteForm', 'Your password'),
-        );
+        return [
+            'confirmSpaceName' => Yii::t('SpaceModule.base', 'Space Name'),
+        ];
     }
 
 }

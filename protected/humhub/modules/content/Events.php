@@ -2,40 +2,79 @@
 
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2015 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
 
 namespace humhub\modules\content;
 
-use Yii;
+use humhub\commands\CronController;
+use humhub\commands\IntegrityController;
+use humhub\components\Event;
+use humhub\modules\content\components\ContentActiveRecord;
 use humhub\modules\content\models\Content;
+use humhub\modules\content\services\ContentSearchService;
+use humhub\modules\file\models\File;
+use humhub\modules\user\events\UserEvent;
+use Yii;
+use yii\base\BaseObject;
+use yii\helpers\Console;
 
 /**
  * Events provides callbacks to handle events.
  *
  * @author luke
  */
-class Events extends \yii\base\Object
+class Events extends BaseObject
 {
+    /**
+     * Callback when a user is soft deleted.
+     *
+     * @param UserEvent $event
+     */
+    public static function onUserSoftDelete(UserEvent $event)
+    {
+        // Prevent accidental removal of unrelated or global content
+        if (!$event->user->contentcontainer_id) {
+            return;
+        }
 
+        // Delete user profile content on soft delete
+        foreach (Content::findAll(['contentcontainer_id' => $event->user->contentcontainer_id]) as $content) {
+            $record = $content->getPolymorphicRelation();
+            $record === null ? $content->hardDeleteInternal() : $record->hardDelete();
+        }
+    }
+
+    /**
+     * Callback when a user is completely deleted.
+     *
+     * @param \yii\base\Event $event
+     */
     public static function onUserDelete($event)
     {
         $user = $event->sender;
         foreach (Content::findAll(['created_by' => $user->id]) as $content) {
-            $content->delete();
+            $record = $content->getPolymorphicRelation();
+            $record === null ? $content->hardDeleteInternal() : $record->hardDelete();
         }
-        return true;
     }
 
+    /**
+     * Callback when a space is completely deleted.
+     *
+     * @param \yii\base\Event $event
+     */
     public static function onSpaceDelete($event)
     {
-        $space = $event->sender;
-        foreach (Content::findAll(['contentcontainer_id' => $space->contentContainerRecord->id]) as $content) {
-            $content->delete();
+        // Prevent accidental removal of unrelated or global content
+        if (!$event->sender->contentContainerRecord->id) {
+            return;
         }
 
-        return true;
+        foreach (Content::findAll(['contentcontainer_id' => $event->sender->contentContainerRecord->id]) as $content) {
+            $content->delete();
+        }
     }
 
     /**
@@ -45,19 +84,24 @@ class Events extends \yii\base\Object
      */
     public static function onIntegrityCheck($event)
     {
+        /** @var IntegrityController $integrityController */
         $integrityController = $event->sender;
 
-        $integrityController->showTestHeadline("Content Objects (" . Content::find()->count() . " entries)");
-        foreach (Content::find()->all() as $content) {
-            if ($content->user == null) {
-                if ($integrityController->showFix("Deleting content id " . $content->id . " of type " . $content->object_model . " without valid user!")) {
-                    $content->delete();
-                }
+        $integrityController->showTestHeadline('Content Objects (' . Content::find()->count() . ' entries)');
+        foreach (Content::find()->each() as $content) {
+            /* @var Content $content */
+            if (
+                !$content->getCreatedBy()->exists()
+                && $integrityController->showFix('Deleting content id ' . $content->id . ' of type ' . $content->object_model . ' without valid user!')
+            ) {
+                $content->getPolymorphicRelation()?->hardDelete();
             }
-            if ($content->getPolymorphicRelation() == null) {
-                if ($integrityController->showFix("Deleting content id " . $content->id . " of type " . $content->object_model . " without valid content object!")) {
-                    $content->delete();
-                }
+
+            if (
+                $content->getPolymorphicRelation() === null
+                && $integrityController->showFix('Deleting content id ' . $content->id . ' of type ' . $content->object_model . ' without valid content object!')
+            ) {
+                $content->hardDeleteInternal();
             }
         }
     }
@@ -65,55 +109,81 @@ class Events extends \yii\base\Object
     /**
      * On init of the WallEntryAddonWidget, attach the wall entry links widget.
      *
-     * @param CEvent $event
+     * @param Event $event
      */
     public static function onWallEntryAddonInit($event)
     {
-        $event->sender->addWidget(widgets\WallEntryLinks::className(), array(
-            'object' => $event->sender->object,
-            'seperator' => "&nbsp;&middot;&nbsp;",
-            'template' => '<div class="wall-entry-controls">{content}</div>',
-                ), array('sortOrder' => 10)
+        $event->sender->addWidget(
+            widgets\WallEntryLinks::class,
+            [
+                'object' => $event->sender->object,
+            ],
+            ['sortOrder' => 10],
         );
     }
 
     /**
-     * On rebuild of the search index, rebuild all user records
+     * After a Content was deleted
      *
-     * @param type $event
+     * @param \yii\base\Event $event
      */
-    public static function onSearchRebuild($event)
+    public static function onContentAfterDelete($event)
     {
-        foreach (Content::find()->each() as $content) {
-            $contentObject = $content->getPolymorphicRelation();
-            if ($contentObject instanceof \humhub\modules\search\interfaces\Searchable) {
-                Yii::$app->search->add($contentObject);
-            }
+        /* @var Content $content */
+        $content = $event->sender;
+
+        (new ContentSearchService($content))->delete();
+    }
+
+    public static function onFileAfterNewStoredFile($event)
+    {
+        /* @var File $file */
+        $file = $event->sender;
+
+        $record = $file->getPolymorphicRelation();
+        if ($record instanceof ContentActiveRecord && $record->content instanceof Content) {
+            (new ContentSearchService($record->content))->update();
         }
     }
 
     /**
-     * After a components\ContentActiveRecord was saved
-     *
-     * @param \yii\base\Event $event
+     * Callback on daily cron job run
      */
-    public static function onContentActiveRecordSave($event)
+    public static function onCronDailyRun(): void
     {
-        if ($event->sender instanceof \humhub\modules\search\interfaces\Searchable) {
-            Yii::$app->search->update($event->sender);
-        }
+        Yii::$app->queue->push(new jobs\PurgeDeletedContents());
     }
 
     /**
-     * After a components\ContentActiveRecord was deleted
-     *
-     * @param \yii\base\Event $event
+     * Callback on before run cron action
      */
-    public static function onContentActiveRecordDelete($event)
+    public static function onCronBeforeAction($event): void
     {
-        if ($event->sender instanceof \humhub\modules\search\interfaces\Searchable) {
-            Yii::$app->search->delete($event->sender);
+        if (self::canPublishScheduledContent()) {
+            /* @var CronController $controller */
+            $controller = $event->sender;
+            $controller->stdout('Publish scheduled content... ');
+            self::publishScheduledContent();
+            $controller->stdout('done.' . PHP_EOL, Console::FG_GREEN);
         }
     }
 
+    private static function canPublishScheduledContent(): bool
+    {
+        $lastPublishTime = self::getModule()->settings->get('lastPublishScheduledTS');
+        return $lastPublishTime === null
+            || time() >= $lastPublishTime + self::getModule()->publishScheduledInterval * 60;
+    }
+
+    private static function publishScheduledContent()
+    {
+        if (Yii::$app->queue->push(new jobs\PublishScheduledContents())) {
+            self::getModule()->settings->set('lastPublishScheduledTS', time());
+        }
+    }
+
+    private static function getModule(): Module
+    {
+        return Yii::$app->getModule('content');
+    }
 }

@@ -8,8 +8,10 @@
 
 namespace humhub\modules\file\converter;
 
+use humhub\modules\file\Module;
 use Yii;
 use humhub\modules\file\models\File;
+use yii\base\BaseObject;
 
 /**
  * BaseConverter
@@ -17,18 +19,18 @@ use humhub\modules\file\models\File;
  * @since 1.2
  * @author Luke
  */
-abstract class BaseConverter extends \yii\base\Object
+abstract class BaseConverter extends BaseObject
 {
-
     /**
      * @var File the file record
      */
     public $file;
 
     /**
-     * All options used for the converted file variant
-     * 
-     * @var array
+     * All options used for the converted file variant.
+     * These values also produce the unique ID of the cached returned file.
+     *
+     * @var array the converter options
      */
     public $options = [];
 
@@ -39,8 +41,11 @@ abstract class BaseConverter extends \yii\base\Object
     {
         parent::init();
 
-        if (!empty(Yii::$app->getModule('file')->converterOptions[$this->className()])) {
-            Yii::configure($this, Yii::$app->getModule('file')->converterOptions[$this->className()]);
+        /** @var Module $module */
+        $module = Yii::$app->getModule('file');
+
+        if (!empty($module->converterOptions[static::class])) {
+            Yii::configure($this, $module->converterOptions[static::class]);
         }
     }
 
@@ -56,32 +61,42 @@ abstract class BaseConverter extends \yii\base\Object
 
     /**
      * Returns the filename of the converted file.
-     * The filename is a hash of used options and converter class.
-     * 
+     *
      * @return string the filename of converted file
      */
     public function getFilename()
     {
-        $fileName = 'v' . sprintf('%x', crc32($this->className() . http_build_query($this->options)));
-        $this->convert($fileName);
-        return $fileName;
+        $this->convert($this->getId());
+        return $this->getId();
+    }
+
+    /**
+     * Returns the ID of the converted file variant.
+     * The default implementation creates a unique value from the `options` array value.
+     *
+     * @return string the id
+     * @since 1.7
+     */
+    public function getId()
+    {
+        return 'v' . sprintf('%x', crc32(static::class . http_build_query($this->options)));
     }
 
     /**
      * Returns the url to the converted file
-     * 
+     *
      * @return string
      */
     public function getUrl()
     {
-        return $this->file == null ? '' : $this->file->getUrl($this->getFileName());
+        return $this->file == null ? '' : $this->file->getUrl($this->getFilename());
     }
 
     /**
      * Sets file for the converter
-     * 
-     * @param \humhub\modules\file\models\File $file
-     * @return boolean returns false if file cannot be converted
+     *
+     * @param File $file
+     * @return bool returns false if file cannot be converted
      */
     public function applyFile(File $file)
     {

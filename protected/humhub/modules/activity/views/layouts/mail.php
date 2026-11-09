@@ -1,12 +1,17 @@
 <?php
 
-/**
- * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
- * @license https://www.humhub.com/licences
- */
- 
-use yii\helpers\Html;
+use humhub\helpers\Html;
+use humhub\modules\space\models\Space;
+use humhub\helpers\MailStyleHelper;
+
+/* @var $user \humhub\modules\user\models\User */
+/* @var $url string */
+/* @var $content \humhub\modules\content\models\Content */
+/* @var $contentAddon \humhub\modules\content\interfaces\ContentProvider */
+/* @var $contentContainer \humhub\modules\content\models\ContentContainer */
+/* @var $createdAt string */
+/* @var $message string */
+
 ?>
 
 <!-- START NOTIFICATION/ACTIVITY -->
@@ -14,14 +19,14 @@ use yii\helpers\Html;
     <td align="center" valign="top" class="fix-box">
 
         <!-- start  container width 600px -->
-        <table width="600" align="center" border="0" cellspacing="0" cellpadding="0" class="container" bgcolor="#ffffff"
-               style="background-color: #ffffff; border-bottom-left-radius: 4px; border-bottom-left-radius: 4px;">
+        <table width="600" align="center" border="0" cellspacing="0" cellpadding="0" class="container"
+               style="background-color: <?= MailStyleHelper::getBackgroundColorMain() ?>; border-bottom-left-radius: 4px">
             <tr>
                 <td valign="top">
 
                     <!-- start container width 560px -->
                     <table width="560" align="center" border="0" cellspacing="0" cellpadding="0" class="full-width"
-                           bgcolor="#ffffff" style="background-color:#ffffff;">
+                           style="background-color:<?= MailStyleHelper::getBackgroundColorMain() ?>">
 
                         <!-- start image and content -->
                         <tr>
@@ -44,11 +49,11 @@ use yii\helpers\Html;
                                             <table border="0" cellspacing="0" cellpadding="0" align="left">
                                                 <tr>
 
-                                                    <td valign="top" align="left" style="padding-right:20px;">
+                                                    <td valign="top" align="left" style="padding-right:20px">
                                                         <!-- START: USER IMAGE -->
-                                                        <a href="<?= $originator->createUrl('/user/profile', [], true); ?>">
+                                                        <a href="<?= $user->createUrl('/user/profile', [], true) ?>">
                                                             <img
-                                                                src="<?= $originator->getProfileImage()->getUrl("", true); ?>"
+                                                                src="<?= $user->image->getUrl(null, true) ?>"
                                                                 width="50"
                                                                 alt=""
                                                                 style="max-width:50px; display:block !important; border-radius: 4px;"
@@ -64,30 +69,34 @@ use yii\helpers\Html;
                                                                align="left">
 
                                                             <tr>
-                                                                <td style="font-size: 13px; line-height: 22px; font-family:Open Sans,Arial,Tahoma, Helvetica, sans-serif; color:#555555; font-weight:300; text-align:left; ">
+                                                                <td style="font-size: 13px; line-height: 22px; font-family: <?= MailStyleHelper::getFontFamily() ?>; color:<?= MailStyleHelper::getTextColorMain() ?>; font-weight:300; text-align:left; ">
                                                                     <!-- prevent content overflow -->
-                                                                    <div style="width:480px;overflow:hidden;text-overflow:ellipsis;font-size: 13px; line-height: 22px; font-family:Open Sans,Arial,Tahoma, Helvetica, sans-serif; color:#555555; font-weight:300; text-align:left;">
+                                                                    <div
+                                                                        style="width:480px;overflow:hidden;text-overflow:ellipsis;font-size: 13px; line-height: 22px; font-family: <?= MailStyleHelper::getFontFamily() ?>; color:<?= MailStyleHelper::getTextColorMain() ?>; font-weight:300; text-align:left">
                                                                         <!-- content output-->
-                                                                        <?= $content; ?>
+                                                                        <?= $message ?>
 
                                                                         <!-- check if activity object has a space -->
-                                                                        <?php if ($record->content->space !== null): ?>
-                                                                            (<?= Yii::t('ActivityModule.views_activityLayoutMail', 'via'); ?>
-                                                                            <a href="<?= $record->content->space->createUrl('/space/space', [], true); ?>"
-                                                                               style="text-decoration: none; color: #555555;">
-                                                                                   <?= Html::encode($record->content->space->name); ?></a>)
-                                                                        <?php endif; ?>
+                                                                        <?php if ($contentContainer?->polymorphicRelation instanceof Space): ?>
+                                                                            <?= Html::a(
+                                                                                $contentContainer->polymorphicRelation->displayName,
+                                                                                $contentContainer->polymorphicRelation->createUrl(null, [], true),
+                                                                                [
+                                                                                    'style' => 'text-decoration: none; color: ' . MailStyleHelper::getTextColorMain(),
+                                                                                ],
+                                                                            ) ?>
+                                                                        <?php endif ?>
 
-                                                                        <?php if ($url != "") : ?>
+                                                                        <?php if ($url != '') : ?>
                                                                             <!-- START: CONTENT LINK -->
                                                                             <span
-                                                                                style="text-decoration: none; color: #7191a8;"> - <a
-                                                                                    href="<?= $url; ?>"
-                                                                                    style="text-decoration: none; color: #7191a8; "><?= Yii::t('ActivityModule.views_activityLayoutMail', 'see online'); ?></a></span>
+                                                                                style="text-decoration: none; color: <?= MailStyleHelper::getColorPrimary() ?>"> - <a
+                                                                                    href="<?= $url ?>"
+                                                                                    style="text-decoration: none; color: <?= MailStyleHelper::getColorPrimary() ?>; font-weight: bold"><?= Yii::t('ActivityModule.base', 'see online') ?></a></span>
                                                                             <!-- END: CONTENT LINK -->
-                                                                        <?php endif; ?>
+                                                                        <?php endif ?>
                                                                     </div>
-                                                                           
+
                                                                 </td>
                                                             </tr>
 

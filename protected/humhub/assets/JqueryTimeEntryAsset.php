@@ -18,15 +18,14 @@ use yii\web\AssetBundle;
  */
 class JqueryTimeEntryAsset extends AssetBundle
 {
-
     public $publishOptions = [
-        'forceCopy' => false
+        'forceCopy' => false,
     ];
 
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/jquery-timeentry';
+    public $sourcePath = '@npm/kbw.timeentry';
 
     /**
      * @inheritdoc

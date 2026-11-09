@@ -8,10 +8,12 @@
 
 namespace humhub\modules\space\widgets;
 
-use \yii\base\Widget;
 use humhub\modules\space\models\Membership;
-use yii\db\Expression;
 use humhub\modules\space\models\Space;
+use yii\db\ActiveQuery;
+use yii\db\Expression;
+use yii\base\Widget;
+use yii\helpers\Url;
 
 /**
  * Space Members Snippet
@@ -21,7 +23,6 @@ use humhub\modules\space\models\Space;
  */
 class Members extends Widget
 {
-
     /**
      * @var int maximum members to display
      */
@@ -33,6 +34,12 @@ class Members extends Widget
     public $space;
 
     /**
+     * @var bool order members by membership date
+     * @since 1.8
+     */
+    public $orderByNewest;
+
+    /**
      * @inheritdoc
      */
     public function run()
@@ -40,26 +47,33 @@ class Members extends Widget
         $users = $this->getUserQuery()->all();
 
         return $this->render('members', [
-                    'space' => $this->space,
-                    'maxMembers' => $this->maxMembers,
-                    'users' => $users,
-                    'showListButton' => (count($users) == $this->maxMembers),
-                    'urlMembersList' => $this->space->createUrl('/space/membership/members-list'),
-                    'privilegedUserIds' => $this->getPrivilegedUserIds(),
-                    'totalMemberCount' => Membership::getSpaceMembersQuery($this->space)->visible()->count()
+            'users' => $users,
+            'showListButton' => count($users) == $this->maxMembers,
+            'urlMembersList' => $this->space->createUrl('/space/membership/members-list'),
+            'privilegedUserIds' => $this->getPrivilegedUserIds(),
+            'totalMemberCount' => $this->space->getMemberListService()->getCount(),
+            'showListOptions' => [
+                'data-action-click' => 'ui.modal.load',
+                'data-action-url' => Url::to(['/space/membership/members-list', 'container' => $this->space]),
+            ],
         ]);
     }
 
     /**
      * Returns a query for members of this space
      *
-     * @return \yii\db\ActiveQuery the query
+     * @return ActiveQuery the query
      */
     protected function getUserQuery()
     {
-        $query = Membership::getSpaceMembersQuery($this->space)->visible();
+        $query = $this->space->getMemberListService()->getQuery();
         $query->limit($this->maxMembers);
-        $query->orderBy(new Expression('FIELD(space_membership.group_id, "' . Space::USERGROUP_OWNER . '", "' . Space::USERGROUP_MODERATOR . '", "' . Space::USERGROUP_MEMBER . '")'));
+        if ($this->orderByNewest) {
+            $query->orderBy('space_membership.created_at Desc');
+        } else {
+            $query->orderBy(new Expression('FIELD(space_membership.group_id, "' . Space::USERGROUP_OWNER . '", "' . Space::USERGROUP_MODERATOR . '", "' . Space::USERGROUP_MEMBER . '")'));
+        }
+
         return $query;
     }
 
@@ -74,9 +88,9 @@ class Members extends Widget
 
         $query = Membership::find()->where(['space_id' => $this->space->id]);
         $query->andWhere(['IN', 'group_id', [Space::USERGROUP_OWNER, Space::USERGROUP_ADMIN, Space::USERGROUP_MODERATOR]]);
-        foreach ($query->all() as $membership) {
-            if (isset($privilegedMembers[$membership->group_id])) {
-                $privilegedMembers[$membership->group_id][] = $membership->user_id;
+        foreach ($query->select(['user_id', 'group_id'])->asArray()->all() as $membership) {
+            if (isset($privilegedMembers[$membership['group_id']])) {
+                $privilegedMembers[$membership['group_id']][] = $membership['user_id'];
             }
         }
 
@@ -87,5 +101,3 @@ class Members extends Widget
     }
 
 }
-
-?>

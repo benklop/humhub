@@ -6,10 +6,9 @@ use humhub\modules\space\models\Space;
 
 class m150704_005452_namespace extends Migration
 {
-
     public function up()
     {
-        $this->renameClass('Space', Space::className());
+        $this->renameClass('Space', Space::class);
     }
 
     public function down()

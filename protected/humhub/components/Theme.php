@@ -2,28 +2,57 @@
 
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2018 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
 
 namespace humhub\components;
 
+use humhub\assets\CoreBundleAsset;
+use humhub\helpers\ScssHelper;
+use humhub\helpers\ThemeHelper;
 use Yii;
+use yii\base\InvalidConfigException;
+use yii\base\Theme as BaseTheme;
 use yii\helpers\FileHelper;
-use humhub\libs\ThemeHelper;
 
 /**
+ * Theme represents a HumHub theme.
+ *
+ * - Overwrite views
+ * When [[View]] renders a view file, it will check the [[View::theme|active theme]]
+ * to see if there is a themed version of the view file exists. If so, the themed version will be rendered instead.
+ * See [[ThemeViews]] for more details.
+ *
+ * - Using scss variables
+ * Using this theme class you can also access all SCSS style variables of the current theme.
+ *
+ * Examples:
+ *
+ * ```php
+ * $primaryColorCode = Yii::$app->view->theme->variable('primary');
+ * $isFluid = (boolean) Yii::$app->view->theme->variable('isFluid');
+ * ```
+ *
+ * See [[ThemeVariables]] for more details.
+ *
+ * @since 1.3
  * @inheritdoc
+ *
+ * @property-read string $publishedBasePath
+ * @property-read string $publishedResourcesPath
  */
-class Theme extends \yii\base\Theme
+class Theme extends BaseTheme
 {
-
-    const VARIABLES_CACHE_ID = 'theme_variables';
+    public const EVENT_AFTER_THEME_ACTIVATE = 'afterThemeActivate';
 
     /**
-     * Name of the Theme
-     *
-     * @var string
+     * @since 1.18
+     */
+    public const CORE_THEME_NAME = 'HumHub';
+
+    /**
+     * @var string the name of the theme
      */
     public $name;
 
@@ -33,27 +62,47 @@ class Theme extends \yii\base\Theme
     private $_baseUrl = null;
 
     /**
-     * Indicates that resources should be published via assetManager
+     * @var array|null memoized `[path, url]` of [[publish()]]
      */
-    public $publishResources = false;
+    private ?array $_published = null;
 
     /**
-     * @var array theme variables loaded from the themes variables.less merged with default variables.less file.
+     * @var bool indicates that resources should be published via assetManager
      */
-    private $_variables;
+    public $publishResources = true;
+
+    /**
+     * @var ThemeVariables
+     */
+    public $variables = null;
+
+    /**
+     * @var ThemeViews
+     */
+    public $views = null;
+
+    /**
+     * @var Theme[] the parent themes
+     */
+    protected $parents;
+
+    /**
+     * @var bool
+     */
+    private bool $pathMapInitialized = false;
+
 
     /**
      * @inheritdoc
      */
     public function init()
     {
-        if ($this->getBasePath() == '') {
-            $this->setBasePath('@webroot/themes/' . $this->name);
+        if (empty($this->getBasePath())) {
+            throw new InvalidConfigException('The "basePath" property must be set.');
         }
 
-        $this->pathMap = [
-            '@humhub/views' => $this->getBasePath() . '/views',
-        ];
+        $this->variables = new ThemeVariables(['theme' => $this]);
+        $this->views = new ThemeViews(['theme' => $this]);
 
         parent::init();
     }
@@ -63,223 +112,380 @@ class Theme extends \yii\base\Theme
      */
     public function getBaseUrl()
     {
-        if ($this->_baseUrl !== null) {
-            return $this->_baseUrl;
+        if (!$this->_baseUrl) {
+            $this->_baseUrl = $this->publishResources ? $this->publishResources() : rtrim(Yii::getAlias('@web/themes/' . $this->name), '/');
         }
 
-        $this->_baseUrl = ($this->publishResources) ? $this->publishResources() : rtrim(Yii::getAlias('@web/themes/' . $this->name), '/');
         return $this->_baseUrl;
     }
 
     /**
-     * This method will be called before when this theme is written to the
-     * dynamic configuration file.
+     * Registers theme css and resources to the view
      */
-    public function beforeActivate()
+    public function register()
     {
-        // Force republish theme files
+        if (Yii::$app->request->isAjax) {
+            return;
+        }
+
+        // Get bas URL and make sure resources are published
+        $baseUrl = $this->getBaseUrl();
+
+        // The theme directory is gone, so there is nothing to publish and nothing to
+        // build from - registering the CSS would point at the domain root instead.
+        if ($baseUrl === '') {
+            $this->fallbackToCoreTheme();
+            return;
+        }
+
+        // The published path is relative to the assets mount, so it has to be resolved
+        // through the asset manager - the mount may be remote (e.g. S3), where every
+        // metadata lookup is a network round trip, so the modification time (which is
+        // needed as a cache buster below) doubles as the "is the CSS built?" check.
+        $cssFile = $this->getPublishedResourcesPath() . DIRECTORY_SEPARATOR . 'css' . DIRECTORY_SEPARATOR . 'theme.css';
+        $mtime = Yii::$app->assetManager->fileLastModified($cssFile);
+
+        // Build CSS if not already done
+        if ($mtime === null) {
+            if (ThemeHelper::buildCss() !== true) {
+                // SCSS error in a Child Theme or Custom SCSS - keep registering the (possibly
+                // outdated) CSS below in case the fallback cannot be applied.
+                $this->fallbackToCoreTheme();
+            }
+
+            $mtime = Yii::$app->assetManager->fileLastModified($cssFile);
+        }
+        Yii::$app->view->registerCssFile($baseUrl . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR . 'css' . DIRECTORY_SEPARATOR . 'theme.css?v=' . ($mtime ?? ''), ['depends' => CoreBundleAsset::class]);
+    }
+
+    /**
+     * Falls back to the core HumHub theme with no Custom SCSS, for a minimal working styling.
+     *
+     * Only switches and refreshes when the core theme is a different, buildable theme -
+     * otherwise (e.g. the core theme itself fails to build, or is already active)
+     * refreshing would loop forever.
+     *
+     * @since 1.19
+     */
+    private function fallbackToCoreTheme(): void
+    {
+        $coreTheme = ThemeHelper::getThemeByName(self::CORE_THEME_NAME);
+
+        if (
+            $coreTheme === null
+            || $coreTheme->getBasePath() === $this->getBasePath()
+            || ThemeHelper::buildCss($coreTheme, false) !== true
+        ) {
+            Yii::error('Could not fall back to the core theme from theme: ' . $this->name, 'ui');
+            return;
+        }
+
+        $coreTheme->activate();
+        Yii::$app->response->refresh();
+    }
+
+
+    /**
+     * Activate this theme
+     */
+    public function activate()
+    {
+        Yii::$app->settings->set('theme', $this->getBasePath());
+        Yii::$app->settings->delete('themeParents');
+
+        // Publish resources to assets (the CSS will be automatically generated on layout rendering)
         $this->publishResources(true);
 
-        // Store color variables to configuration
-        $this->storeColorsToConfig();
+        $this->trigger(static::EVENT_AFTER_THEME_ACTIVATE, new Event());
+    }
+
+    /**
+     * Checks whether the Theme is currently active.
+     *
+     * @return bool
+     */
+    public function isActive()
+    {
+        return ($this->name === Yii::$app->view->theme->name);
     }
 
     /**
      * @inheritdoc
+     *
+     * In addition to the standard Yii2 directory-based [[pathMap]] entries, this
+     * implementation also accepts per-file overrides. Any [[pathMap]] key ending
+     * in `.php` is treated as an exact source-file path; the value (or values,
+     * if an array) is the override file used in its place. Both keys and values
+     * may use Yii path aliases.
+     *
+     * Example:
+     *
+     * ```php
+     * 'pathMap' => [
+     *     // per-file override
+     *     '@humhub/modules/user/views/auth/login.php' => '@config/views/login.php',
+     *     // directory override (Yii2 default behaviour)
+     *     '@humhub/modules/space/widgets/views' => '@config/views/space-widgets',
+     * ],
+     * ```
      */
     public function applyTo($path)
     {
-        $autoPath = $this->autoFindModuleView($path);
-        if ($autoPath !== null && file_exists($autoPath)) {
-            return $autoPath;
+        $this->initPathMap();
+
+        $resolved = $this->resolveFromPathMap($path);
+        if ($resolved !== null) {
+            return $resolved;
         }
 
-        // Web Resource e.g. image
-         if (substr($path, 0, 5) === '@web/' || substr($path, 0, 12) === '@web-static/') {
-            $themedFile = str_replace(['@web/', '@web-static/'], [$this->getBasePath(), $this->getBasePath() . DIRECTORY_SEPARATOR . '/'], $path);
-            #print $themedFile;
-            // Check if file exists in theme base dir
-            if (file_exists($themedFile)) {
-                return str_replace(['@web/', '@web-static/'], [$this->getBaseUrl(), $this->getBaseUrl() . DIRECTORY_SEPARATOR . '/'], $path);
+        $translated = $this->views->translate($path);
+        if ($translated !== null) {
+            return $translated;
+        }
+
+        // Check if a parent theme may translate this view
+        foreach ($this->getParents() as $theme) {
+            $translated = $theme->views->translate($path);
+            if ($translated !== null) {
+                return $translated;
             }
-            return $path;
         }
 
-        return parent::applyTo($path);
+        return $path;
     }
 
     /**
-     * Publishs theme assets (e.g. images or css)
+     * Resolves a view file through [[pathMap]], supporting both per-file
+     * (`.php` keys, exact match) and directory-prefix entries in the same map.
+     * Returns the override file path if one matches and exists, otherwise null.
      *
-     * @param boolean|null $force
-     * @return string url of published resources
+     * @since 1.19
      */
-    public function publishResources($force = null)
+    private function resolveFromPathMap(string $path): ?string
     {
-        if ($force === null) {
-            $force = (YII_DEBUG);
+        if (empty($this->pathMap)) {
+            return null;
         }
 
-        $published = Yii::$app->assetManager->publish(
-                $this->getBasePath(), ['forceCopy' => $force, 'except' => ['views/']]
-        );
+        $normalized = FileHelper::normalizePath($path);
 
-        return $published[1];
-    }
+        foreach ($this->pathMap as $from => $tos) {
+            $fromResolved = FileHelper::normalizePath(Yii::getAlias($from));
 
-    /**
-     * Tries to automatically maps the view file of a module to a themed one.
-     *
-     * Formats:
-
-     *   .../moduleId/views/controllerId/viewName.php
-     *   to:
-     *   .../views/moduleId/controllerId/viewName.php
-     *
-     *   .../moduleId/[widgets|activities|notifications]/views/viewName.php
-     *   to:
-     *   .../views/moduleId/[widgets|activities|notifications]/viewName.php
-     *
-     * @return string theme view path or null
-     */
-    protected function autoFindModuleView($path)
-    {
-        $sep = preg_quote(DIRECTORY_SEPARATOR);
-        $path = FileHelper::normalizePath($path);
-
-        // .../moduleId/views/controllerId/viewName.php
-        if (preg_match('@.*' . $sep . '(.*?)' . $sep . 'views' . $sep . '(.*?)' . $sep . '(.*?)\.php$@', $path, $hits)) {
-            return $this->getBasePath() . '/views/' . $hits[1] . '/' . $hits[2] . '/' . $hits[3] . '.php';
-        }
-
-        // /moduleId/[widgets|activities|notifications]/views/viewName.php
-        if (preg_match('@.*' . $sep . '(.*?)' . $sep . '(widgets|notifications|activities)' . $sep . 'views' . $sep . '(.*?)\.php$@', $path, $hits)) {
-            // Handle special case (protected/humhub/widgets/views/view.php => views/widgets/view.php
-            if ($hits[1] == 'humhub') {
-                return $this->getBasePath() . '/views/' . $hits[2] . '/' . $hits[3] . '.php';
+            // Per-file entry: keyed by an exact .php path
+            if (str_ends_with($fromResolved, '.php')) {
+                if ($fromResolved !== $normalized) {
+                    continue;
+                }
+                foreach ((array) $tos as $to) {
+                    $resolved = Yii::getAlias($to);
+                    if (is_file($resolved)) {
+                        return $resolved;
+                    }
+                }
+                continue;
             }
-            return $this->getBasePath() . '/views/' . $hits[1] . '/' . $hits[2] . '/' . $hits[3] . '.php';
+
+            // Directory entry: prefix substitution (Yii2 default behaviour)
+            $fromDir = $fromResolved . DIRECTORY_SEPARATOR;
+            if (!str_starts_with($normalized, $fromDir)) {
+                continue;
+            }
+            $rest = substr($normalized, strlen($fromDir));
+            foreach ((array) $tos as $to) {
+                $file = FileHelper::normalizePath(Yii::getAlias($to)) . DIRECTORY_SEPARATOR . $rest;
+                if (is_file($file)) {
+                    return $file;
+                }
+            }
         }
 
         return null;
     }
 
     /**
-     * Stores color informations to configuration for use in modules.
+     * Ensures the default `@humhub/views` mapping is present in [[pathMap]],
+     * merging with any user-supplied entries so that explicit overrides take
+     * precedence over the active theme's view directory.
      */
-    public function storeColorsToConfig()
+    protected function initPathMap()
     {
-        $this->loadVariables();
+        if ($this->pathMapInitialized) {
+            return;
+        }
+        $this->pathMapInitialized = true;
 
-        // @deprecated since version 1.2 color settings
-        Yii::$app->settings->set('colorDefault', $this->variable('default'));
-        Yii::$app->settings->set('colorPrimary', $this->variable('default'));
-        Yii::$app->settings->set('colorInfo', $this->variable('default'));
-        Yii::$app->settings->set('colorSuccess', $this->variable('default'));
-        Yii::$app->settings->set('colorWarning', $this->variable('default'));
-        Yii::$app->settings->set('colorDanger', $this->variable('default'));
-    }
-
-    /**
-     * Reloads the less variables within the variable.less file and caches the result.
-     *
-     * Note: this function merges the default less variables with the actual theme variables.
-     *
-     * @since 1.2
-     */
-    public function loadVariables()
-    {
-        $variables = $this->parseThemeVariables('variables.less');
-
-        Yii::$app->cache->delete(self::VARIABLES_CACHE_ID);
-        $this->_variables = [];
-
-        // Set variable settings
-        foreach ($variables as $variable => $value) {
-            $this->_variables[$variable] = $value;
+        if ($this->pathMap === null) {
+            $this->pathMap = [];
         }
 
-        Yii::$app->cache->set(self::VARIABLES_CACHE_ID, $this->_variables);
+        $defaultViewPaths = [$this->getBasePath() . '/views'];
+        foreach ($this->getParents() as $theme) {
+            $defaultViewPaths[] = $theme->getBasePath() . '/views';
+        }
+
+        $existing = (array) ($this->pathMap['@humhub/views'] ?? []);
+        $this->pathMap['@humhub/views'] = array_merge($existing, $defaultViewPaths);
     }
 
     /**
-     * Searches for a theme varaible with the given $key.
+     * Returns the published theme directory, the counterpart of [[getBaseUrl()]].
+     * [[getBasePath()]] stays the source directory, which since 1.19 may live outside the webroot.
      *
+     * The path is relative to the assets mount, so use it with the asset manager or
+     * `Yii::$app->fs->getAssetsMount()` - the mount may be remote (e.g. S3).
+     *
+     * @return string published theme path, relative to the assets mount
+     * @since 1.19
+     */
+    public function getPublishedBasePath(): string
+    {
+        return $this->publish()[0];
+    }
+
+    /**
+     * @return string Path of published resources
+     *
+     * @since 1.18
+     */
+    public function getPublishedResourcesPath(): string
+    {
+        return $this->getPublishedBasePath() . '/resources';
+    }
+
+    /**
+     * Published theme assets (e.g. images or css)
+     *
+     * @param bool $force publish of resources
+     * @return string URL of published resources
+     */
+    public function publishResources(bool $force = false)
+    {
+        return $this->publish($force)[1];
+    }
+
+    /**
+     * Publishes the theme, excluding the parts it is only built from (`views/` and `scss/`).
+     *
+     * [[getPublishedBasePath()]] and [[publishResources()]] both resolve through this single
+     * call, so path and URL cannot drift apart - the published directory name depends on the
+     * modification time of the source directory.
+     *
+     * @return array `[path, url]`, or `['', '']` if the theme directory does not exist
+     * @since 1.19
+     */
+    private function publish(bool $force = false): array
+    {
+        if ($this->_published !== null && !$force) {
+            return $this->_published;
+        }
+
+        // Never fatal on a stale theme path, so that [[register()]] can fall back to the core theme
+        if (!is_dir((string) $this->getBasePath())) {
+            Yii::error('Could not publish theme resources, theme directory does not exist: ' . $this->getBasePath(), 'ui');
+            return $this->_published = ['', ''];
+        }
+
+        return $this->_published = Yii::$app->assetManager->publish(
+            $this->getBasePath(),
+            ['forceCopy' => $force, 'except' => ['views/', 'scss/']],
+        );
+    }
+
+    /**
+     * Returns the value of a given theme variable
+     *
+     * @param string $key the variable name
+     *
+     * @return string|null the variable value
      * @since 1.2
-     * @param string $key
-     * @return string
+     *
      */
     public function variable($key, $default = null)
     {
-        if (empty($this->_variables)) {
-            $this->_variables = Yii::$app->cache->get(self::VARIABLES_CACHE_ID);
-        }
-
-        if (empty($this->_variables)) {
-            $this->loadVariables();
-        }
-
-        $result = isset($this->_variables[$key]) ? $this->_variables[$key] : null;
-
-        // Compatibility with old themes prior v1.2
-        if(!$result && in_array($key, ['default', 'primary', 'info', 'success', 'warning', 'danger'])) {
-            $result = Yii::$app->settings->get('color'.ucfirst($key));
-        }
-
-        return $result === null ? $default : $result;
+        return $this->variables->get($key, $default);
     }
 
     /**
-     * Parses the varaibles of the given less fileName.
-     * This will merge the values of the default `@webroot/less/fileName.less` and
-     * the actual theme values in `themeBasePath/less/fileName.less`.
+     * Returns the base/parent themes of this theme.
+     * The parent is specified in the LESS Variable file as variable "baseTheme".
      *
-     * @since 1.2
-     * @param type $lessFile the less file to parse
+     * @return Theme[] the theme parents
+     * @see ThemeVariables
      */
-    public function parseThemeVariables($lessFileName)
+    public function getParents()
     {
-        // Parse default values
-        $variables = $this->parseLessVariables(Yii::getAlias('@webroot-static/less/'.$lessFileName));
+        if ($this->parents !== null) {
+            return $this->parents;
+        }
 
-        // Overwrite theme values
-        return \yii\helpers\ArrayHelper::merge($variables, $this->parseLessVariables($this->getBasePath() . '/less/'.$lessFileName));
-    }
+        if ($this->isActive() && Yii::$app->installationState->hasState(InstallationState::STATE_DATABASE_CREATED)) {
+            $this->parents = static::getActiveParents();
+        }
 
-    /**
-     * Parses the variables of the given $lessFile.
-     *
-     * @since 1.2
-     * @param string $lessFile
-     * @return array key value pair of less variables
-     */
-    protected function parseLessVariables($lessFile)
-    {
-        if (file_exists($lessFile)) {
-            $variables = [];
-            preg_match_all('/@(.*?):\s(.*?);/', file_get_contents($lessFile), $regexResult, PREG_SET_ORDER);
-            foreach ($regexResult as $regexHit) {
-                $variables[$regexHit[1]] = $regexHit[2];
+        if ($this->parents === null) {
+            $this->parents = ThemeHelper::getThemeTree($this, false);
+
+            // Don't store an unresolved base theme (e.g. its module is not loaded during an update),
+            // so it is looked up again on the next request
+            if ($this->isActive() && ($this->parents !== [] || !$this->hasBaseTheme())) {
+                // Store parent path of currently active theme as settings
+                // This avoids theme paths lookups
+                $parentPaths = [];
+                foreach ($this->parents as $theme) {
+                    $parentPaths[] = $theme->getBasePath();
+                }
+
+                if (Yii::$app->installationState->hasState(InstallationState::STATE_DATABASE_CREATED)) {
+                    Yii::$app->settings->setSerialized('themeParents', $parentPaths);
+                }
             }
-            return $variables;
         }
 
-        return [];
+        return $this->parents;
     }
 
     /**
-     * Store colors to configuration.
+     * Checks whether the theme declares a base theme in its SCSS variables file
      *
-     * @deprecated since version 1.1
-     * @param type $themeName
+     * @since 1.19.1
      */
-    public static function setColorVariables($themeName)
+    private function hasBaseTheme(): bool
     {
-        $theme = ThemeHelper::getThemeByName($themeName);
-
-        if ($theme !== null) {
-            $theme->storeColorsToConfig();
+        // The core theme never has a parent, so skip reading its SCSS variables file
+        if ($this->name === self::CORE_THEME_NAME) {
+            return false;
         }
+
+        $baseTheme = ScssHelper::getVariable(ScssHelper::getVariableFile($this), 'baseTheme');
+
+        return !empty($baseTheme) && $baseTheme !== $this->name;
     }
 
+    /**
+     * Returns the parent themes of the currently active theme.
+     * These parents are stored in the setting variable "themeParents" for faster lookup.
+     *
+     * @return Theme[]|null the themes or null
+     */
+    protected static function getActiveParents()
+    {
+        $parentPaths = Yii::$app->settings->getSerialized('themeParents');
+
+        if (!is_array($parentPaths)) {
+            return null;
+        }
+
+        $parents = [];
+        foreach ($parentPaths as $parentPath) {
+            $theme = ThemeHelper::getThemeByPath($parentPath);
+            if ($theme === null) {
+                Yii::$app->settings->delete('themeParents');
+                Yii::error('Could not load stored theme parent! - Deleted parent path.', 'ui');
+                return null;
+            }
+            $parents[] = $theme;
+        }
+        return $parents;
+    }
 }

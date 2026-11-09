@@ -2,80 +2,186 @@
 
 namespace humhub\modules\content\widgets;
 
+use humhub\modules\content\components\ContentActiveRecord;
+use humhub\modules\content\widgets\stream\StreamEntryOptions;
+use humhub\modules\content\widgets\stream\WallStreamEntryOptions;
+use humhub\modules\content\widgets\stream\WallStreamEntryWidget;
+use humhub\modules\ui\menu\MenuEntry;
+use humhub\modules\ui\menu\WidgetMenuEntry;
+use humhub\modules\ui\menu\widgets\Menu;
+use yii\helpers\ArrayHelper;
+
 /**
  * This widget is responsible for rendering the context menu for wallentries.
- * 
+ *
  * The default context menu can be extended by overwriting the getContextMenu function of
  * the WallEntryWidget.
  */
-class WallEntryControls extends \humhub\widgets\BaseStack
+class WallEntryControls extends Menu
 {
-
     /**
-     * @var \humhub\modules\content\components\ContentActiveRecord
+     * @var ContentActiveRecord
      */
     public $object;
 
     /**
-     * @var WallEntry
+     * @var WallEntry|WallStreamEntryWidget
      */
     public $wallEntryWidget;
 
     /**
      * @inheritdoc
      */
-    public function run()
+    public $template = '@content/widgets/views/wallEntryControls';
+
+    /**
+     * @var WallStreamEntryOptions
+     */
+    public $renderOptions;
+
+    /**
+     * @inheritdoc
+     */
+    public function init()
     {
-        foreach ($this->wallEntryWidget->getContextMenu() as $menuItem) {
-            if (!is_array($menuItem) || empty($menuItem)) {
+        $this->initRenderOptions();
+        parent::init();
+    }
+
+    public function initRenderOptions()
+    {
+        if (!$this->renderOptions && $this->wallEntryWidget instanceof WallStreamEntryWidget) {
+            $this->renderOptions = $this->wallEntryWidget->renderOptions;
+        } elseif (!$this->renderOptions) {
+            $this->renderOptions = new WallStreamEntryOptions();
+        }
+    }
+
+    /**
+     * @return string the active view context of the stream entry
+     */
+    public function getViewContext()
+    {
+        if (!$this->renderOptions) {
+            return StreamEntryOptions::VIEW_CONTEXT_DEFAULT;
+        }
+
+        return $this->renderOptions->getViewContext();
+    }
+
+    public function initControls()
+    {
+        if ($this->renderOptions->isControlsMenuDisabled()) {
+            return;
+        }
+
+        $entries = $this->wallEntryWidget instanceof WallEntry
+            ? $this->wallEntryWidget->getContextMenu()
+            : $this->wallEntryWidget->getControlsMenuEntries();
+
+        foreach ($entries as $menuItem) {
+            if (empty($menuItem)) {
                 continue;
             }
 
-            $linkDefinition = $this->getWallEntryLinkDefinition($menuItem);
-            $this->addWidget($linkDefinition[0], $linkDefinition[1], $linkDefinition[2]);
+            $this->addEntry($this->getWallEntryLink($menuItem));
         }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function run()
+    {
+        if ($this->renderOptions->isControlsMenuDisabled()) {
+            return '';
+        }
+
+        $this->initControls();
 
         return parent::run();
     }
 
     /**
+     * @inheritdoc
+     */
+    public function addEntry(MenuEntry $entry)
+    {
+        if ($this->renderOptions && $this->renderOptions->isContextMenuEntryDisabled($entry)) {
+            return;
+        }
+
+        parent::addEntry($entry);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getAttributes()
+    {
+        return [
+            'class' => 'nav nav-pills preferences',
+        ];
+    }
+
+    /**
+     * Adds an entry by widget class and parameters and entry options
+     *
+     * @param string $className widget class
+     * @param array $params widget options
+     * @param array $options entry options
+     */
+    public function addWidget($className, $params = [], $options = [])
+    {
+        $sortOrder = $options['sortOrder'] ?? PHP_INT_MAX;
+        $cfg = array_merge($options, ['widgetClass' => $className, 'widgetOptions' => $params, 'sortOrder' => $sortOrder]);
+        $this->addEntry(new WidgetMenuEntry($cfg));
+    }
+
+    /**
      * Returns the widget definition for the given $menuItem.
      * The $menuItem can either be given as single array:
-     * 
+     *
      * ['label' => 'mylabel', icon => 'fa-myicon', 'data-action-click' => 'myaction', ...]
-     * 
+     *
      *  or as widget type definition:
-     * 
+     *
      * [MyWidget::class, [...], [...]]
-     * 
-     * @param type $menuItem
-     * @return type
+     *
+     * @param [] $menuItem
+     * @return MenuEntry
      */
-    protected function getWallEntryLinkDefinition($menuItem)
+    protected function getWallEntryLink($menuItem)
     {
-        $result = [];
-        if (\yii\helpers\ArrayHelper::isAssociative($menuItem)) { // ['label' => 'xy', 'icon' => ...] -> WallEntryControlLink
-            $result[0] = WallEntryControlLink::class;
-            $result[1] = ['options' => $menuItem];
-            $result[2] = [];
-            $result[2]['sortOrder'] = isset($menuItem['sortOrder']) ? $menuItem['sortOrder'] : null;
-        } else { // [MyWidget::class, [..WidgetOptions..], [sortOrder..]] -> Widget type definition
-            $result[0] = $menuItem[0];
-            $result[1] = isset($menuItem[1]) ? $menuItem[1] : null;
-            $result[2] = isset($menuItem[2]) ? $menuItem[2] : null;
+        if ($menuItem instanceof MenuEntry) {
+            return $menuItem;
         }
-        return $result;
+
+        if (ArrayHelper::isAssociative($menuItem)) { // ['label' => 'xy', 'icon' => ...] -> WallEntryControlLink
+            $widgetClass = WallEntryControlLink::class;
+            $widgetOptions = ['options' => $menuItem];
+            $options = ['sortOrder' => $menuItem['sortOrder'] ?? PHP_INT_MAX];
+        } else { // [MyWidget::class, [..WidgetOptions..], [sortOrder..]] -> Widget type definition
+            $widgetClass = $menuItem[0];
+            $widgetOptions = $menuItem[1] ?? null;
+            $options = $menuItem[2] ?? [];
+        }
+
+        $sortOrder = $options['sortOrder'] ?? PHP_INT_MAX;
+        $cfg = array_merge($options, ['widgetClass' => $widgetClass, 'widgetOptions' => $widgetOptions, 'sortOrder' => $sortOrder]);
+
+        return new WidgetMenuEntry($cfg);
     }
 
     /**
      * Checks if the given $array is an associative array or not.
-     * 
+     *
      * @param array $arr
-     * @return boolean
+     * @return bool
      */
-    function isAssoc($arr)
+    public function isAssoc($arr)
     {
-        if (array() === $arr) {
+        if ([] === $arr) {
             return false;
         }
         return array_keys($arr) !== range(0, count($arr) - 1);

@@ -1,5 +1,4 @@
 <?php
 return array (
-  '<strong>Modify</strong> space image' => '',
-  'Close' => '닫기',
+  '<strong>Modify</strong> image' => '<strong>Upraviť</strong> obrázok',
 );

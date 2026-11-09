@@ -8,9 +8,9 @@
 
 namespace humhub\modules\space\notifications;
 
-use Yii;
-use yii\bootstrap\Html;
+use humhub\helpers\Html;
 use humhub\modules\notification\components\BaseNotification;
+use Yii;
 
 /**
  * SpaceApprovalRequestAcceptedNotification
@@ -19,31 +19,30 @@ use humhub\modules\notification\components\BaseNotification;
  */
 class ApprovalRequestAccepted extends BaseNotification
 {
-
     /**
      * @inheritdoc
      */
     public $moduleId = "space";
-    
+
     /**
      * @inheritdoc
      */
     public $viewName = "approvalAccepted";
 
     /**
-     *  @inheritdoc
+     * @inheritdoc
      */
     public function category()
     {
-        return new SpaceMemberNotificationCategory;
+        return new SpaceMemberNotificationCategory();
     }
-    
+
     /**
-     *  @inheritdoc
+     * @inheritdoc
      */
     public function getMailSubject()
     {
-        return strip_tags($this->html());
+        return $this->getInfoText($this->originator->displayName, $this->source->name);
     }
 
     /**
@@ -51,12 +50,18 @@ class ApprovalRequestAccepted extends BaseNotification
      */
     public function html()
     {
-        return Yii::t('SpaceModule.notification', '{displayName} approved your membership for the space {spaceName}', array(
-                    '{displayName}' => Html::tag('strong', Html::encode($this->originator->displayName)),
-                    '{spaceName}' => Html::tag('strong', Html::encode($this->source->name))
-        ));
+        return $this->getInfoText(
+            Html::tag('strong', Html::encode($this->originator->displayName)),
+            Html::tag('strong', Html::encode($this->source->name)),
+        );
+    }
+
+    private function getInfoText($displayName, $spaceName)
+    {
+        return Yii::t('SpaceModule.notification', '{displayName} approved your membership for the space {spaceName}', [
+            '{displayName}' => $displayName,
+            '{spaceName}' => $spaceName,
+        ]);
     }
 
 }
-
-?>

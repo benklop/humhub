@@ -9,23 +9,25 @@
 namespace humhub\modules\user\models;
 
 use humhub\components\ActiveRecord;
+use humhub\components\behaviors\PolymorphicRelation;
 use humhub\modules\content\components\ContentActiveRecord;
 use humhub\modules\content\components\ContentAddonActiveRecord;
 use humhub\modules\user\notifications\Mentioned;
 use yii\base\Exception;
+use yii\base\InvalidArgumentException;
+use yii\db\ActiveQuery;
 
 /**
  * This is the model class for table "user_mentioning".
  * The followings are the available columns in table 'user_mentioning':
  *
- * @property integer $id
+ * @property int $id
  * @property string $object_model
- * @property integer $object_id
- * @property integer $user_id
+ * @property int $object_id
+ * @property int $user_id
  */
 class Mentioning extends ActiveRecord
 {
-
     /**
      * @inheritdoc
      */
@@ -41,8 +43,8 @@ class Mentioning extends ActiveRecord
     {
         return [
             [
-                'class' => \humhub\components\behaviors\PolymorphicRelation::className(),
-                'mustBeInstanceOf' => [ContentActiveRecord::className(), ContentAddonActiveRecord::className()],
+                'class' => PolymorphicRelation::class,
+                'mustBeInstanceOf' => [ContentActiveRecord::class, ContentAddonActiveRecord::class],
             ],
         ];
     }
@@ -78,65 +80,91 @@ class Mentioning extends ActiveRecord
         return parent::afterSave($insert, $changedAttributes);
     }
 
+    /**
+     * @param $source
+     * @return User|null
+     */
     private function getOriginatorBySource($source)
     {
         if ($source instanceof ContentActiveRecord) {
-            return $source->content->user;
+            /** @var ContentActiveRecord $source */
+            // Attribute the mention to whoever last saved the content (e.g. an editor who
+            // added the mention), falling back to the original author when no updater is
+            // recorded (e.g. content created/updated outside a user session).
+            return $source->content->updatedBy ?? $source->content->createdBy;
         } elseif ($source instanceof ContentAddonActiveRecord) {
-            return $source->user;
+            /** @var ContentAddonActiveRecord $source */
+            // Same reasoning as above: prefer the last editor (e.g. a moderator who edited
+            // someone else's comment and added a mention) over the original author.
+            return $source->updatedBy ?? $source->createdBy;
         }
 
         return null;
     }
 
     /**
-     * Parses a given text for mentioned users and creates an mentioning for them.
+     * Creates the mentioning for the given `$guids`.
+     * This function will skip `$guids` which are already mentioned in the given `$record`.
      *
+     * @param string|string[] $guids
      * @param ContentActiveRecord|ContentAddonActiveRecord $record
-     * @param string $text
-     *
-     * @return User[] Mentioned users
-     * @throws Exception
+     * @return array new mentionings for the given $record
+     * @throws InvalidArgumentException if an invalid $record is provided
+     * @since 1.3
      */
-    public static function parse($record, $text)
+    public static function mention($guids, $record)
     {
-        $result = [];
-        if ($record instanceof ContentActiveRecord || $record instanceof ContentAddonActiveRecord) {
-            preg_replace_callback('@\@\-u([\w\-]*?)($|\s|\.)@', function ($hit) use (&$record, &$result) {
-                $user = User::findOne(['guid' => $hit[1]]);
-                if ($user !== null) {
-                    // Check the user was already mentioned (e.g. edit)
-                    $mention = self::findOne([
-                        'object_model' => get_class($record),
-                        'object_id' => $record->getPrimaryKey(),
-                        'user_id' => $user->id,
-                    ]);
-                    if ($mention === null) {
-                        $mention = new Mentioning(['user_id' => $user->id]);
-                        $mention->setPolymorphicRelation($record);
-                        $mention->save();
-
-                        $result[] = $user;
-
-                        // Mentioned users automatically follows the content
-                        $record->content->getPolymorphicRelation()->follow($user->id);
-                    }
-                }
-            }, $text);
-        } else {
-            throw new Exception("Mentioning can only used in HActiveRecordContent or HActiveRecordContentAddon objects!");
+        if (!($record instanceof ContentActiveRecord || $record instanceof ContentAddonActiveRecord)) {
+            throw new InvalidArgumentException("Mentioning can only used in ContentActiveRecord or ContentAddonActiveRecord objects!");
         }
+
+        // Mention only for published content
+        if (!$record->content->getStateService()->isPublished()) {
+            return [];
+        }
+
+        if (is_string($guids)) {
+            $guids = [$guids];
+        }
+
+        $result = [];
+
+        foreach ($guids as $guid) {
+            $user = User::findOne(['guid' => $guid]);
+            if (!$user) {
+                continue;
+            }
+
+            // Check the user was already mentioned (e.g. edit)
+            $mention = static::findOne([
+                'object_model' => $record::class,
+                'object_id' => $record->getPrimaryKey(),
+                'user_id' => $user->id,
+            ]);
+
+            if (!$mention) {
+                $mention = new static(['user_id' => $user->id]);
+                $mention->setPolymorphicRelation($record);
+                $mention->save();
+
+                $result[] = $user;
+
+                // Mentioned users automatically follows the content
+                $record->content->getPolymorphicRelation()->follow($user->id);
+            }
+        }
+
         return $result;
     }
 
     /**
      * Related user
      *
-     * @return \yii\db\ActiveQuery
+     * @return ActiveQuery
      */
     public function getUser()
     {
-        return $this->hasOne(\humhub\modules\user\models\User::className(), ['id' => 'user_id']);
+        return $this->hasOne(User::class, ['id' => 'user_id']);
     }
 
 }

@@ -1,12 +1,17 @@
 <?php
 
+use humhub\modules\ui\icon\widgets\Icon;
 use yii\helpers\Url;
 
-/* @var $this humhub\components\View */
+/* @var $this \humhub\components\View */
+/* @var $isAdmin bool */
 ?>
 <li>
     <!-- load modal confirm widget -->
-    <a  href="#" data-action-click="delete">
-           <i class="fa fa-trash-o"></i> <?= Yii::t('ContentModule.widgets_views_deleteLink', 'Delete') ?> 
+    <a href="#"
+       class="dropdown-item "
+       data-action-click="<?= $isAdmin ? 'adminDelete' : 'delete' ?>"
+       data-content-delete-url="<?= $isAdmin ? Url::to(['/content/content/admin-delete']) : Url::to(['/content/content/delete']) ?>">
+        <?= Icon::get('delete') ?> <?= Yii::t('ContentModule.base', 'Delete') ?>
     </a>
 </li>

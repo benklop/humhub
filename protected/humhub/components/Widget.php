@@ -8,25 +8,29 @@
 
 namespace humhub\components;
 
-use Yii;
-use yii\base\Event;
 use humhub\libs\WidgetCreateEvent;
+use Yii;
 
 /**
  * @inheritdoc
+ * @property-read \humhub\components\View $view
  */
 class Widget extends \yii\base\Widget
 {
-
     /**
      * @event WidgetCreateEvent an event raised before creating a widget.
      */
-    const EVENT_CREATE = 'create';
+    public const EVENT_CREATE = 'create';
 
     /**
      * @var bool if set to false this widget won't be rendered
      */
     public $render = true;
+
+    /**
+     * @var string defines an optional layout
+     */
+    public $widgetLayout;
 
     /**
      * Creates a widget instance and runs it.
@@ -39,14 +43,14 @@ class Widget extends \yii\base\Widget
     public static function widget($config = [])
     {
         if (!isset($config['class'])) {
-            $config['class'] = get_called_class();
+            $config['class'] = static::class;
         }
 
-        if(isset($config['render']) && $config['render'] === false) {
-           return;
+        if (isset($config['render']) && $config['render'] === false) {
+            return '';
         }
 
-        Event::trigger(self::className(), self::EVENT_CREATE, new WidgetCreateEvent($config));
+        \yii\base\Event::trigger(static::class, self::EVENT_CREATE, new WidgetCreateEvent($config));
 
         ob_start();
         ob_implicit_flush(false);
@@ -55,10 +59,10 @@ class Widget extends \yii\base\Widget
             $widget = Yii::createObject($config);
             $out = '';
             if ($widget->beforeRun()) {
-                $result = $widget->run();
+                $result = (empty($widget->widgetLayout)) ? $widget->run() : $widget->render($widget->widgetLayout, $widget->getLayoutViewParams());
                 $out = $widget->afterRun($result);
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // close the output buffer opened above if it has not been closed already
             if (ob_get_level() > 0) {
                 ob_end_clean();
@@ -67,6 +71,20 @@ class Widget extends \yii\base\Widget
         }
 
         return ob_get_clean() . $out;
+    }
+
+    /**
+     * Returns an array of view parameter used if [[layout]] is set.
+     *
+     * By default the actual widget output created by [[run()]] is set as `content` param.
+     *
+     * @return array
+     */
+    public function getLayoutViewParams()
+    {
+        return [
+            'content' => $this->run(),
+        ];
     }
 
     /**

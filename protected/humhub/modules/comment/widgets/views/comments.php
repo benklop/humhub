@@ -1,32 +1,54 @@
 <?php
 
-use yii\helpers\Url;
+use humhub\helpers\Html;
+use humhub\modules\comment\models\Comment as CommentModel;
+use humhub\modules\comment\services\CommentListService;
+use humhub\modules\comment\widgets\Comment;
+use humhub\modules\comment\widgets\Form;
+use humhub\modules\comment\widgets\ShowMore;
+use humhub\modules\content\models\Content;
+
+/* @var $content Content */
+/* @var $parentComment ?CommentModel */
+/* @var $comments CommentModel[] */
+/* @var $anchorCommentId ?int comment id the list was built around, not necessarily on this level (see CommentListService::getLimited()) */
+/* @var $highlightCommentId ?int comment id to highlight, only set when the comment is on this level */
+/* @var $id string unique object id */
 ?>
-<div class="well well-small comment-container" style="display:none;" id="comment_<?= $id; ?>">
-    <div class="comment <?php if (Yii::$app->user->isGuest): ?>guest-mode<?php endif; ?>" id="comments_area_<?= $id; ?>">
-        <?php if ($isLimited): ?>
-            <a href="#" class="show show-all-link" data-ui-loader data-action-click="comment.showAll" data-action-url="<?= Url::to(['/comment/comment/show', 'contentModel' => $modelName, 'contentId' => $modelId]) ?>">
-                <?= Yii::t('CommentModule.widgets_views_comments', 'Show all {total} comments.', ['{total}' => $total]) ?>
-            </a>
-            <hr>
-        <?php endif;
-        ?>
+
+<div class="bg-light p-2 mt-3 comment-container d-none" id="comment_<?= $id ?>">
+    <div class="comment<?= Yii::$app->user->isGuest ? ' guest-mode' : '' ?>" id="comments_area_<?= $id ?>">
+        <?= ShowMore::widget([
+            'content' => $content,
+            'parentComment' => $parentComment,
+            'commentId' => isset($comments[0]) ? $comments[0]->id : null,
+            'direction' => \humhub\modules\comment\services\CommentListService::LIST_DIR_PREV,
+        ]) ?>
 
         <?php foreach ($comments as $comment) : ?>
-            <?= \humhub\modules\comment\widgets\Comment::widget(['comment' => $comment]); ?>
-        <?php endforeach; ?>
+            <hr class="comment-separator">
+            <?= Comment::widget([
+                'comment' => $comment,
+                'additionalClass' => ($highlightCommentId == $comment->id ? 'comment-current' : ''),
+            ]); ?>
+        <?php endforeach ?>
+
+        <?php if ($anchorCommentId && count($comments) > 1) : ?>
+            <?= ShowMore::widget([
+                'content' => $content,
+                'parentComment' => $parentComment,
+                'commentId' => $comments[count($comments) - 1]->id,
+                'direction' => CommentListService::LIST_DIR_NEXT,
+            ]) ?>
+        <?php endif; ?>
     </div>
 
-    <?= \humhub\modules\comment\widgets\Form::widget(['object' => $object]); ?>
-
+    <?= Form::widget(['content' => $content, 'parentComment' => $parentComment]); ?>
 </div>
-<?php /* END: Comment Create Form */ ?>
 
-<script>
-
-<?php if (count($comments) != 0) { ?>
-    // make comments visible at this point to fixing autoresizing issue for textareas in Firefox
-    $('#comment_<?php echo $id; ?>').show();
-<?php } ?>
-
+<script <?= Html::nonce() ?>>
+    <?php if (count($comments) != 0) : ?>
+        // make comments visible at this point to fixing autoresizing issue for textareas in Firefox
+        $('#comment_<?= $id ?>').show();
+    <?php endif; ?>
 </script>

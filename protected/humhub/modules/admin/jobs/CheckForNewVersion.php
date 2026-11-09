@@ -8,11 +8,12 @@
 
 namespace humhub\modules\admin\jobs;
 
-use Yii;
-use humhub\components\queue\ActiveJob;
-use humhub\modules\user\models\Group;
 use humhub\modules\admin\libs\HumHubAPI;
+use humhub\modules\admin\Module;
 use humhub\modules\admin\notifications\NewVersionAvailable;
+use humhub\modules\queue\ActiveJob;
+use humhub\modules\user\models\Group;
+use Yii;
 
 /**
  * CheckForNewVersion checks for new HumHub version and sends a notification to
@@ -23,26 +24,23 @@ use humhub\modules\admin\notifications\NewVersionAvailable;
  */
 class CheckForNewVersion extends ActiveJob
 {
-
     /**
      * @inheritdoc
      */
     public function run()
     {
+        /** @var Module $adminModule */
         $adminModule = Yii::$app->getModule('admin');
 
-        if (!$adminModule->dailyCheckForNewVersion) {
-            return;
-        }
-        if (!Yii::$app->params['humhub']['apiEnabled']) {
+        if (!$adminModule->dailyCheckForNewVersion || !Yii::$app->params['humhub']['apiEnabled']) {
             return;
         }
 
-        $latestVersion = HumHubAPI::getLatestHumHubVersion();
+        $latestVersion = HumHubAPI::getLatestHumHubVersion(false);
 
         if (!empty($latestVersion)) {
 
-            $adminUsers = Group::getAdminGroup()->users;
+            $adminUserQuery = Group::getAdminGroup()->getUsers();
 
             $latestNotifiedVersion = $adminModule->settings->get('lastVersionNotify');
             $adminsNotified = !($latestNotifiedVersion == "" || version_compare($latestVersion, $latestNotifiedVersion, ">"));
@@ -52,14 +50,14 @@ class CheckForNewVersion extends ActiveJob
 
             // Cleanup existing notifications
             if (!$newVersionAvailable || ($newVersionAvailable && !$adminsNotified)) {
-                foreach ($adminUsers as $admin) {
+                foreach ($adminUserQuery->all() as $admin) {
                     $updateNotification->delete($admin);
                 }
             }
 
             // Create new notification
             if ($newVersionAvailable && !$adminsNotified) {
-                $updateNotification->sendBulk($adminUsers);
+                $updateNotification->sendBulk($adminUserQuery);
                 $adminModule->settings->set('lastVersionNotify', $latestVersion);
             }
         }

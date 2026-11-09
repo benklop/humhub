@@ -2,19 +2,18 @@
 
 namespace humhub\modules\user\models\forms;
 
-use Yii;
-use yii\helpers\Url;
 use humhub\modules\user\models\User;
+use Yii;
+use yii\base\Model;
 
 /**
  * @package humhub.modules_core.user.forms
  * @since 0.5
  * @author Luke
  */
-class AccountRecoverPassword extends \yii\base\Model
+class AccountRecoverPassword extends Model
 {
-
-    public $verifyCode;
+    public $captcha = '';
     public $email;
 
     /**
@@ -22,13 +21,12 @@ class AccountRecoverPassword extends \yii\base\Model
      */
     public function rules()
     {
-        return array(
-            array('email', 'required'),
-            array('email', 'email'),
-            array('email', 'canRecoverPassword'),
-            array('verifyCode', 'captcha', 'captchaAction' => '/user/auth/captcha'),
-            array('email', 'exist', 'targetClass' => User::className(), 'targetAttribute' => 'email', 'message' => Yii::t('UserModule.forms_AccountRecoverPasswordForm', '{attribute} "{value}" was not found!')),
-        );
+        return [
+            ['email', 'required'],
+            ['email', 'email'],
+            ['captcha', Yii::$app->captcha->getValidatorClass()],
+            ['email', 'verifyEmail'],
+        ];
     }
 
     /**
@@ -38,57 +36,52 @@ class AccountRecoverPassword extends \yii\base\Model
      */
     public function attributeLabels()
     {
-        return array(
-            'email' => Yii::t('UserModule.forms_AccountRecoverPasswordForm', 'E-Mail'),
-        );
+        return [
+            'email' => Yii::t('UserModule.account', 'E-Mail'),
+        ];
     }
 
     /**
-     * Checks if we can recover users password.
-     * This may not possible on e.g. LDAP accounts.
+     * Checks email for existing and if it can be recovered
      */
-    public function canRecoverPassword($attribute, $params)
+    public function verifyEmail($attribute)
     {
+        if ($this->getErrors('captcha')) {
+            // Don't start to check email while captcha code is wrong
+            return;
+        }
 
-        if ($this->email != "") {
-            $user = User::findOne(array('email' => $this->email));
-            $passwordAuth = new \humhub\modules\user\authclient\Password();
+        $user = User::findOne(['email' => $this->email]);
 
-            if ($user != null && $user->auth_mode !== $passwordAuth->getId()) {
-                $this->addError($attribute, Yii::t('UserModule.forms_AccountRecoverPasswordForm', Yii::t('UserModule.forms_AccountRecoverPasswordForm', "Password recovery is not possible on your account type!")));
-            }
+        if ($user === null) {
+            // Don't display any error about not existing email for safe reason
+            return;
+        }
+
+        if ($user->getPasswordRecoveryService()->isLimited()) {
+            $this->addError($attribute, Yii::t('UserModule.account', 'Password recovery can only be initiated once every 10 minutes.'));
         }
     }
 
     /**
      * Sends this user a new password by E-Mail
      *
+     * @return bool
      */
-    public function recover()
+    public function recover(): bool
     {
-
-        $user = User::findOne(array('email' => $this->email));
-
-        // Switch to users language - if specified
-        if ($user->language !== "") {
-            Yii::$app->language = $user->language;
+        if (!$this->validate()) {
+            return false;
         }
 
-        $token = \humhub\libs\UUID::v4();
-        Yii::$app->getModule('user')->settings->contentContainer($user)->set('passwordRecoveryToken', $token . '.' . time());
+        $user = User::findOne(['email' => $this->email]);
 
-        $mail = Yii::$app->mailer->compose([
-			'html' => '@humhub/modules/user/views/mails/RecoverPassword',
-			'text' => '@humhub/modules/user/views/mails/plaintext/RecoverPassword'
-		], [
-            'user' => $user,
-            'linkPasswordReset' => Url::to(["/user/password-recovery/reset", 'token' => $token, 'guid' => $user->guid], true)
-        ]);
-        $mail->setTo($user->email);
-        $mail->setSubject(Yii::t('UserModule.forms_AccountRecoverPasswordForm', 'Password Recovery'));
-        $mail->send();
+        if (!$user) {
+            // Make the case of not existing email as successful for safe reason
+            return true;
+        }
 
-        return true;
+        return $user->getPasswordRecoveryService()->sendRecoveryInfo();
     }
 
 }

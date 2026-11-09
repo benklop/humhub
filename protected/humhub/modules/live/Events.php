@@ -8,22 +8,22 @@
 
 namespace humhub\modules\live;
 
-use Yii;
-use humhub\modules\live\Module;
+use humhub\modules\content\components\ContentContainerActiveRecord;
 use humhub\modules\friendship\FriendshipEvent;
 use humhub\modules\space\MemberEvent;
 use humhub\modules\user\events\FollowEvent;
-use humhub\modules\content\components\ContentContainerActiveRecord;
+use humhub\modules\user\models\User;
+use Yii;
+use yii\base\BaseObject;
 
 /**
  * Events provides callbacks to handle events.
- * 
+ *
  * @since 1.2
  * @author luke
  */
-class Events extends \yii\base\Object
+class Events extends BaseObject
 {
-
     /**
      * On hourly cron job, add database cleanup task
      */
@@ -38,7 +38,7 @@ class Events extends \yii\base\Object
      */
     public static function onMemberEvent(MemberEvent $event)
     {
-        Yii::$app->cache->delete(Module::$legitimateCachePrefix . $event->user->id);
+        Yii::$app->getModule('live')->refreshLegitimateContentContainerIds($event->user);
     }
 
     /**
@@ -47,8 +47,8 @@ class Events extends \yii\base\Object
      */
     public static function onFriendshipEvent(FriendshipEvent $event)
     {
-        Yii::$app->cache->delete(Module::$legitimateCachePrefix . $event->user1->id);
-        Yii::$app->cache->delete(Module::$legitimateCachePrefix . $event->user2->id);
+        Yii::$app->getModule('live')->refreshLegitimateContentContainerIds($event->user1);
+        Yii::$app->getModule('live')->refreshLegitimateContentContainerIds($event->user2);
     }
 
     /**
@@ -57,8 +57,8 @@ class Events extends \yii\base\Object
      */
     public static function onFollowEvent(FollowEvent $event)
     {
-        if ($event->target instanceof ContentContainerActiveRecord) {
-            Yii::$app->cache->delete(Module::$legitimateCachePrefix . $event->user->id);
+        if ($event->target instanceof ContentContainerActiveRecord && $event->user instanceof User) {
+            Yii::$app->getModule('live')->refreshLegitimateContentContainerIds($event->user);
         }
     }
 

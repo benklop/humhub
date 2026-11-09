@@ -1,5 +1,5 @@
-<?php
+<?php /* Translated by Paul (https://paul.bid) www.paul.bid@gmail.com */
 return array (
-  'Pinned' => 'Закрепить',
-  'Unpinned' => 'Открепить',
+  'Pinned' => 'Закреплено',
+  'Unpinned' => 'Откреплено',
 );

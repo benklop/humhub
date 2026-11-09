@@ -8,6 +8,10 @@
 
 namespace humhub\modules\content\widgets;
 
+use humhub\modules\content\components\ContentActiveRecord;
+use Yii;
+use yii\base\Widget;
+
 /**
  * Delete Link for Wall Entries
  *
@@ -17,11 +21,10 @@ namespace humhub\modules\content\widgets;
  * @package humhub.modules_core.wall.widgets
  * @since 0.5
  */
-class DeleteLink extends \yii\base\Widget
+class DeleteLink extends Widget
 {
-
     /**
-     * @var \humhub\modules\content\components\ContentActiveRecord
+     * @var ContentActiveRecord
      */
     public $content = null;
 
@@ -30,18 +33,17 @@ class DeleteLink extends \yii\base\Widget
      */
     public function run()
     {
-        if($this->content->content->isArchived()) {
-            return;
-        }
-        
         if ($this->content->content->canEdit()) {
-            return $this->render('deleteLink', array(
-                        'model' => $this->content->content->object_model,
-                        'id' => $this->content->content->object_id
-            ));
+
+            $isAdmin = $this->content->content->created_by !== Yii::$app->user->id;
+
+            return $this->render('deleteLink', [
+                'model' => $this->content->content->object_model,
+                'id' => $this->content->content->object_id,
+                'isAdmin' => $isAdmin,
+            ]);
         }
+
+        return '';
     }
-
 }
-
-?>

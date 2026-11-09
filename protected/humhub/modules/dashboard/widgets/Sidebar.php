@@ -1,19 +1,27 @@
 <?php
 
-/**
- * @link https://www.humhub.org/
- * @copyright Copyright (c) 2016 HumHub GmbH & Co. KG
- * @license https://www.humhub.com/licences
- */
-
 namespace humhub\modules\dashboard\widgets;
 
+use humhub\modules\activity\widgets\ActivityBox;
+use humhub\modules\dashboard\Module;
 use humhub\widgets\BaseSidebar;
+use Yii;
 
-/**
- * Sidebar implements the dashboards sidebar
- */
 class Sidebar extends BaseSidebar
 {
-    
+    public function init()
+    {
+        parent::init();
+
+        /** @var Module $module */
+        $module = Yii::$app->getModule('dashboard');
+
+        if ($module->hideActivitySidebarWidget) {
+            foreach ($this->widgets as $k => $widget) {
+                if (isset($widget[0]) && ($widget[0] === ActivityBox::class)) {
+                    unset($this->widgets[$k]);
+                }
+            }
+        }
+    }
 }

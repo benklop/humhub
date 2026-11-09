@@ -1,24 +1,17 @@
 <?php
+
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2018 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  *
  */
 
-/**
- * Created by PhpStorm.
- * User: buddha
- * Date: 30.07.2017
- * Time: 03:07
- */
-
 namespace humhub\components\access;
 
-
 use Yii;
-use yii\base\InvalidParamException;
-use yii\base\Object;
+use yii\base\InvalidArgumentException;
+use yii\base\BaseObject;
 
 /**
  * AccessValidators are responsible for validating a given set of rules.
@@ -51,7 +44,7 @@ use yii\base\Object;
  *
  * @package humhub\components\access
  */
-abstract class AccessValidator extends Object
+abstract class AccessValidator extends BaseObject
 {
     /**
      * @var string the name of the valdiator
@@ -61,7 +54,7 @@ abstract class AccessValidator extends Object
     /**
      * @var int http error code used in case the validation failes
      */
-    public $code = 403;
+    public $code;
 
     /**
      * @var string validator error message
@@ -80,13 +73,19 @@ abstract class AccessValidator extends Object
 
     public function init()
     {
-        if(!$this->name) {
+        if (!$this->code) {
+            $this->code = Yii::$app->user->isGuest ? 401 : 403;
+        }
+
+        if (!$this->name) {
             $this->name = static::class;
         }
 
-        if(empty($this->reason)) {
+        if (empty($this->reason)) {
             $this->reason = Yii::t('error', 'You are not permitted to access this section.');
         }
+
+        parent::init();
     }
 
     /**
@@ -95,9 +94,9 @@ abstract class AccessValidator extends Object
      * The whole rule set can be retrieved by calling `$this->access->rules`.
      *
      *
-     * @return boolean true if validation passed otherwise true
+     * @return bool true if validation passed otherwise true
      */
-    abstract function run();
+    abstract public function run();
 
     /**
      * Filters out all rules which are not related to this validator.
@@ -107,7 +106,7 @@ abstract class AccessValidator extends Object
      */
     protected function filterRelatedRules($rules = null)
     {
-        if($rules === null) {
+        if ($rules === null) {
             $rules = $this->access->getRules();
         }
 
@@ -115,11 +114,11 @@ abstract class AccessValidator extends Object
         foreach ($rules as $rule) {
             $ruleName = $this->getRuleName($rule);
 
-            if($this->name === $ruleName) {
+            if ($this->name === $ruleName) {
                 $result[] = $rule;
             }
-
         }
+
         return $result;
     }
 
@@ -141,7 +140,7 @@ abstract class AccessValidator extends Object
         }
 
         if (!is_array($actions) && !is_string($actions)) {
-            throw new InvalidParamException('Invalid rule provided!');
+            throw new InvalidArgumentException('Invalid rule provided!');
         }
 
         $actions = is_string($actions) ? [$actions] : $actions;
@@ -171,7 +170,7 @@ abstract class AccessValidator extends Object
         if (isset($rule['actions'])) {
             $actions = $rule['actions'];
         } else {
-            $actions = isset($rule[$name]) ? $rule[$name] : $actions;
+            $actions = $rule[$name] ?? $actions;
         }
 
         return $actions;
@@ -185,12 +184,12 @@ abstract class AccessValidator extends Object
      */
     protected function getRuleName($rule)
     {
-        if(empty($rule)) {
+        if (empty($rule)) {
             return null;
         }
 
         $firstKey = current(array_keys($rule));
-        if(is_string($firstKey)) {
+        if (is_string($firstKey)) {
             return $firstKey;
         } else {
             return $rule[$firstKey];

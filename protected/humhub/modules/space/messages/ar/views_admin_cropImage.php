@@ -1,5 +1,4 @@
 <?php
 return array (
-  '<strong>Modify</strong> space image' => '',
-  'Close' => 'اغلاق',
+  '<strong>Modify</strong> image' => '<strong> تعديل </strong>صورة',
 );

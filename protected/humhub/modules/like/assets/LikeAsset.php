@@ -8,22 +8,16 @@
 
 namespace humhub\modules\like\assets;
 
-use yii\web\AssetBundle;
+use humhub\components\assets\AssetBundle;
 
 /**
  * Assets for like related resources.
- * 
+ *
  * @since 1.2
  * @author buddha
  */
 class LikeAsset extends AssetBundle
 {
-
-    /**
-     * @inheritdoc
-     */
-    public $jsOptions = ['position' => \yii\web\View::POS_END];
-
     /**
      * @inheritdoc
      */
@@ -33,7 +27,7 @@ class LikeAsset extends AssetBundle
      * @inheritdoc
      */
     public $js = [
-        'js/humhub.like.js'
+        'js/humhub.like.js',
     ];
 
 }

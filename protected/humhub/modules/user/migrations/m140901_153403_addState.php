@@ -5,7 +5,6 @@ use yii\db\Migration;
 
 class m140901_153403_addState extends Migration
 {
-
     public function up()
     {
         $this->addColumn('user_module', 'state', 'int(4)');
@@ -14,7 +13,7 @@ class m140901_153403_addState extends Migration
         $this->dropColumn('user_module', 'updated_at');
         $this->dropColumn('user_module', 'updated_by');
 
-        $this->update('user_module', array('state' => 1));
+        $this->update('user_module', ['state' => 1]);
     }
 
     public function down()

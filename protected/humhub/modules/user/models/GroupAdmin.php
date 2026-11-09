@@ -7,17 +7,16 @@ use humhub\components\ActiveRecord;
 /**
  * This is the model class for table "group_admin".
  *
- * @property integer $id
- * @property integer $user_id
- * @property integer $group_id
+ * @property int $id
+ * @property int $user_id
+ * @property int $group_id
  * @property string $created_at
- * @property integer $created_by
+ * @property int $created_by
  * @property string $updated_at
- * @property integer $updated_by
+ * @property int $updated_by
  */
 class GroupAdmin extends ActiveRecord
 {
-
     /**
      * @inheritdoc
      */
@@ -34,7 +33,7 @@ class GroupAdmin extends ActiveRecord
         return [
             [['user_id', 'group_id'], 'required'],
             [['user_id', 'group_id'], 'integer'],
-            [['user_id', 'group_id'], 'unique', 'targetAttribute' => ['user_id', 'group_id'], 'message' => 'The combination of User ID and Group ID has already been taken.']
+            [['user_id', 'group_id'], 'unique', 'targetAttribute' => ['user_id', 'group_id'], 'message' => 'The combination of User ID and Group ID has already been taken.'],
         ];
     }
 
@@ -56,12 +55,12 @@ class GroupAdmin extends ActiveRecord
 
     public function getGroup()
     {
-        return $this->hasOne(Group::className(), ['id' => 'group_id']);
+        return $this->hasOne(Group::class, ['id' => 'group_id']);
     }
 
     public function getUser()
     {
-        return $this->hasOne(User::className(), ['id' => 'user_id']);
+        return $this->hasOne(User::class, ['id' => 'user_id']);
     }
 
 }

@@ -2,28 +2,26 @@
 
 namespace humhub\modules\admin\models\forms;
 
+use humhub\modules\user\components\MaintenanceModeGate;
 use Yii;
-use humhub\libs\DynamicConfig;
-use humhub\modules\space\models\Space;
-use humhub\modules\stream\actions\Stream;
+use yii\base\Model;
 
 /**
  * BasicSettingsForm
  * @since 0.5
  */
-class BasicSettingsForm extends \yii\base\Model
+class BasicSettingsForm extends Model
 {
-
     public $name;
     public $baseUrl;
     public $defaultLanguage;
-    public $defaultSpaceGuid = [];
-    public $defaultSpaces;
     public $tour;
-    public $timeZone;
-    public $defaultStreamSort;
+    public $defaultTimeZone;
     public $dashboardShowProfilePostForm;
+    public $dashboardShowTopicSidebar;
     public $enableFriendshipModule;
+    public $maintenanceMode;
+    public $maintenanceModeInfo;
 
     /**
      * @inheritdoc
@@ -35,15 +33,14 @@ class BasicSettingsForm extends \yii\base\Model
         $this->name = Yii::$app->settings->get('name');
         $this->baseUrl = Yii::$app->settings->get('baseUrl');
         $this->defaultLanguage = Yii::$app->settings->get('defaultLanguage');
-        $this->timeZone = Yii::$app->settings->get('timeZone');
+        $this->defaultTimeZone = Yii::$app->settings->get('defaultTimeZone');
+        $this->maintenanceMode = Yii::$app->settings->get(MaintenanceModeGate::SETTING_MAINTENANCE_MODE);
+        $this->maintenanceModeInfo = Yii::$app->settings->get('maintenanceModeInfo');
 
         $this->dashboardShowProfilePostForm = Yii::$app->getModule('dashboard')->settings->get('showProfilePostForm');
+        $this->dashboardShowTopicSidebar = Yii::$app->getModule('dashboard')->settings->get('showTopicSidebar');
         $this->tour = Yii::$app->getModule('tour')->settings->get('enable');
         $this->enableFriendshipModule = Yii::$app->getModule('friendship')->settings->get('enable');
-
-        $this->defaultSpaces = \humhub\modules\space\models\Space::findAll(['auto_add_new_members' => 1]);
-
-        $this->defaultStreamSort = Yii::$app->getModule('stream')->settings->get('defaultSort');
     }
 
     /**
@@ -55,10 +52,11 @@ class BasicSettingsForm extends \yii\base\Model
             [['name', 'baseUrl'], 'required'],
             ['name', 'string', 'max' => 150],
             ['defaultLanguage', 'in', 'range' => array_keys(Yii::$app->i18n->getAllowedLanguages())],
-            ['timeZone', 'in', 'range' => \DateTimeZone::listIdentifiers()],
-            ['defaultSpaceGuid', 'checkSpaceGuid'],
-            [['tour', 'dashboardShowProfilePostForm', 'enableFriendshipModule'], 'in', 'range' => [0, 1]],
-            [['defaultStreamSort'], 'in', 'range' => array_keys($this->getDefaultStreamSortOptions())],
+            [['defaultTimeZone'], 'in', 'range' => \DateTimeZone::listIdentifiers()],
+            [['tour', 'dashboardShowProfilePostForm', 'dashboardShowTopicSidebar', 'enableFriendshipModule', 'maintenanceMode'], 'in', 'range' => [0, 1]],
+            [['baseUrl'], 'url', 'pattern' => '/^{schemes}:\/\/([A-Z0-9][A-Z0-9_\-\.]*)+(?::\d{1,5})?(?:$|[?\/#])/i'],
+            [['baseUrl'], 'trim'],
+            ['maintenanceModeInfo', 'safe'],
         ];
     }
 
@@ -68,89 +66,48 @@ class BasicSettingsForm extends \yii\base\Model
     public function attributeLabels()
     {
         return [
-            'name' => Yii::t('AdminModule.forms_BasicSettingsForm', 'Name of the application'),
-            'baseUrl' => Yii::t('AdminModule.forms_BasicSettingsForm', 'Base URL'),
-            'defaultLanguage' => Yii::t('AdminModule.forms_BasicSettingsForm', 'Default language'),
-            'timeZone' => Yii::t('AdminModule.forms_BasicSettingsForm', 'Server Timezone'),
-            'defaultSpaceGuid' => Yii::t('AdminModule.forms_BasicSettingsForm', 'Default space'),
-            'tour' => Yii::t('AdminModule.forms_BasicSettingsForm', 'Show introduction tour for new users'),
-            'dashboardShowProfilePostForm' => Yii::t('AdminModule.forms_BasicSettingsForm',
-                'Show user profile post form on dashboard'),
-            'enableFriendshipModule' => Yii::t('AdminModule.forms_BasicSettingsForm', 'Enable user friendship system'),
-            'defaultStreamSort' => Yii::t('AdminModule.forms_BasicSettingsForm', 'Default stream content order'),
+            'name' => Yii::t('AdminModule.settings', 'Name of the application'),
+            'baseUrl' => Yii::t('AdminModule.settings', 'Base URL'),
+            'defaultLanguage' => Yii::t('AdminModule.settings', 'Default language'),
+            'defaultTimeZone' => Yii::t('AdminModule.settings', 'Default Timezone'),
+            'tour' => Yii::t('AdminModule.settings', 'Show introduction tour for new users'),
+            'dashboardShowProfilePostForm' => Yii::t('AdminModule.settings', 'Show user profile post form on dashboard'),
+            'dashboardShowTopicSidebar' => Yii::t('AdminModule.settings', 'Show topic widget in Dashboard sidebar'),
+            'enableFriendshipModule' => Yii::t('AdminModule.settings', 'Enable user friendship system'),
+            'defaultStreamSort' => Yii::t('AdminModule.settings', 'Default stream content order'),
+            'maintenanceMode' => Yii::t('AdminModule.settings', 'Enable maintenance mode'),
+            'maintenanceModeInfo' => Yii::t('AdminModule.settings', 'Add custom info text for maintenance mode. Displayed on the login page.'),
         ];
     }
 
     /**
-     * This validator function checks the defaultSpaceGuid.
-     * @param type $attribute
-     * @param type $params
+     * @inheritdoc
      */
-    public function checkSpaceGuid($attribute, $params)
+    public function attributeHints()
     {
-        if (!empty($this->defaultSpaceGuid)) {
-            foreach ($this->defaultSpaceGuid as $spaceGuid) {
-                if ($spaceGuid != "") {
-                    $space = \humhub\modules\space\models\Space::findOne(['guid' => $spaceGuid]);
-                    if ($space == null) {
-                        $this->addError($attribute, Yii::t('AdminModule.forms_BasicSettingsForm', "Invalid space"));
-                    }
-                }
-            }
-        }
+        return [
+            'baseUrl' => Yii::t('AdminModule.settings', 'E.g. http://example.com/humhub'),
+        ];
     }
 
     /**
      * Saves the form
-     * @return boolean
+     * @return bool
      */
     public function save()
     {
         Yii::$app->settings->set('name', $this->name);
         Yii::$app->settings->set('baseUrl', $this->baseUrl);
         Yii::$app->settings->set('defaultLanguage', $this->defaultLanguage);
-        Yii::$app->settings->set('timeZone', $this->timeZone);
+        Yii::$app->settings->set('defaultTimeZone', $this->defaultTimeZone);
+        Yii::$app->settings->set(MaintenanceModeGate::SETTING_MAINTENANCE_MODE, $this->maintenanceMode);
+        Yii::$app->settings->set('maintenanceModeInfo', $this->maintenanceModeInfo);
 
         Yii::$app->getModule('dashboard')->settings->set('showProfilePostForm', $this->dashboardShowProfilePostForm);
+        Yii::$app->getModule('dashboard')->settings->set('showTopicSidebar', $this->dashboardShowTopicSidebar);
         Yii::$app->getModule('tour')->settings->set('enable', $this->tour);
         Yii::$app->getModule('friendship')->settings->set('enable', $this->enableFriendshipModule);
-        Yii::$app->getModule('stream')->settings->set('defaultSort', $this->defaultStreamSort);
-
-        // Remove Old Default Spaces
-        if (empty($this->defaultSpaceGuid)) {
-            Space::updateAll(['auto_add_new_members' => 0], ['auto_add_new_members' => 1]);
-        } else {
-            foreach (Space::findAll(['auto_add_new_members' => 1]) as $space) {
-                if (!in_array($space->guid, $this->defaultSpaceGuid)) {
-                    $space->auto_add_new_members = 0;
-                    $space->save();
-                }
-            }
-            // Add new Default Spaces
-            foreach ($this->defaultSpaceGuid as $spaceGuid) {
-                $space = Space::findOne(['guid' => $spaceGuid]);
-                if ($space != null && $space->auto_add_new_members != 1) {
-                    $space->auto_add_new_members = 1;
-                    $space->save();
-                }
-            }
-        }
-
-        DynamicConfig::rewrite();
 
         return true;
     }
-
-    /**
-     * Returns available options for defaultStreamSort attribute
-     * @return array
-     */
-    public function getDefaultStreamSortOptions()
-    {
-        return [
-            Stream::SORT_CREATED_AT => Yii::t('AdminModule.forms_BasicSettingsForm', 'Sort by creation date'),
-            Stream::SORT_UPDATED_AT => Yii::t('AdminModule.forms_BasicSettingsForm', 'Sort by update date'),
-        ];
-    }
-
 }

@@ -1,30 +1,22 @@
 <?php
 
-/**
- * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
- * @license https://www.humhub.com/licences
- */
-
 namespace humhub\modules\comment\widgets;
 
+use humhub\components\Widget;
+use humhub\modules\comment\helpers\IdHelper;
+use humhub\modules\comment\models\Comment as CommentModel;
+use humhub\modules\comment\Module;
+use humhub\modules\comment\services\CommentListService;
+use humhub\modules\content\models\Content;
 use Yii;
 
-/**
- * This widget is used to show a comment link inside the wall entry controls.
- *
- * @since 0.5
- */
-class CommentLink extends \yii\base\Widget
+class CommentLink extends Widget
 {
+    public const MODE_INLINE = 'inline';
+    public const MODE_POPUP = 'popup';
 
-    const MODE_INLINE = 'inline';
-    const MODE_POPUP = 'popup';
-
-    /**
-     * Content Object
-     */
-    public $object;
+    public Content $content;
+    public ?CommentModel $parentComment = null;
 
     /**
      * Mode
@@ -32,40 +24,36 @@ class CommentLink extends \yii\base\Widget
      * inline: Show comments on the same page with CommentsWidget (default)
      * popup: Open comments popup, display only link
      *
-     * @var type
+     * @var string
      */
     public $mode;
 
-    /**
-     * Executes the widget.
-     */
+
     public function run()
     {
+        /** @var Module $module */
+        $module = Yii::$app->getModule('comment');
 
-        if ($this->mode == "") {
+        if (Yii::$app->user->isGuest && $module->guestHideComments) {
+            if ($this->parentComment !== null) {
+                return '';
+            }
+        } elseif (!$module->canComment($this->content)) {
+            return '';
+        }
+
+        if (empty($this->mode)) {
             $this->mode = self::MODE_INLINE;
         }
 
-        if (!Yii::$app->getModule('comment')->canComment($this->object->content)) {
-            return;
-        }
-
         return $this->render('link', [
-            'id' => $this->object->getUniqueId(),
+            'id' => IdHelper::getId($this->content, $this->parentComment),
             'mode' => $this->mode,
-            'objectModel' => $this->object->content->object_model,
-            'objectId' => $this->object->content->object_id,
+            'content' => $this->content,
+            'parentComment' => $this->parentComment,
+            'commentCount' => (new CommentListService($this->content, $this->parentComment))->getCount(),
+            'isNestedComment' => ($this->parentComment !== null),
+            'module' => $module,
         ]);
     }
-
-    /**
-     * Returns count of existing comments
-     *
-     * @return Int Comment Count
-     */
-    public function getCommentsCount()
-    {
-        return \humhub\modules\comment\models\Comment::GetCommentCount(get_class($this->object), $this->object->getPrimaryKey());
-    }
-
 }

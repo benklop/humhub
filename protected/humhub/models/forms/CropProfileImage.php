@@ -9,6 +9,7 @@
 namespace humhub\models\forms;
 
 use yii\base\Model;
+use yii\web\JsExpression;
 
 /**
  * CropProfileImageForm is a form for image cropping.
@@ -20,7 +21,6 @@ use yii\base\Model;
  */
 class CropProfileImage extends Model
 {
-
     /**
      * @var Int X Coordinates of the area
      */
@@ -52,16 +52,86 @@ class CropProfileImage extends Model
     public $cropSetSelect = [0, 0, 100, 100];
 
     /**
+     * @var array
+     * @since 1.4
+     */
+    public $minSize = [50, 50];
+
+    /**
+     * @var string
+     * @since 1.4
+     */
+    public $bgColor = 'black';
+
+    /**
+     * @var string
+     * @since 1.4
+     */
+    public $bgOpacity = '0.5';
+
+    /**
+     * @var string
+     * @since 1.4
+     */
+    public $boxWidth = '440';
+
+    /**
+     * @var bool
+     */
+    public $keySupport = true;
+
+    /**
+     * @var string
+     * @since 1.4
+     */
+    public $onChangeJs = 'function(c){ $("#cropX").val(c.x);$("#cropY").val(c.y);$("#cropW").val(c.w);$("#cropH").val(c.h); }';
+
+    /**
      * Declares the validation rules.
      *
      * @return Array Validation Rules
      */
     public function rules()
     {
-        return array(
-            array(['cropX', 'cropY', 'cropW', 'cropH'], 'required'),
-            array(['cropX', 'cropY', 'cropW', 'cropH'], 'number'),
-        );
+        return [
+            [['cropX', 'cropY', 'cropW', 'cropH'], 'required'],
+            [['cropX', 'cropY', 'cropW', 'cropH'], 'number'],
+        ];
+    }
+
+    /**
+     * @return array
+     * @since 1.4
+     */
+    public function getPluginOptions()
+    {
+        return  [
+            'aspectRatio' => $this->aspectRatio,
+            'minSize' => $this->minSize,
+            'setSelect' => $this->cropSetSelect,
+            'bgColor' =>  $this->bgColor,
+            'bgOpacity' => $this->bgOpacity,
+            'boxWidth' => $this->boxWidth,
+            'onChange' => new JsExpression('function(c){ $("#cropX").val(c.x);$("#cropY").val(c.y);$("#cropW").val(c.w);$("#cropH").val(c.h); }'),
+            'keySupport' => $this->keySupport,
+        ];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function load($data, $formName = null)
+    {
+        if (parent::load($data, $formName)) {
+            // Make sure the params are integer formatted
+            $this->cropX = intval($this->cropX);
+            $this->cropY = intval($this->cropY);
+            $this->cropW = intval($this->cropW);
+            $this->cropH = intval($this->cropH);
+            return true;
+        }
+
+        return false;
     }
 
 }

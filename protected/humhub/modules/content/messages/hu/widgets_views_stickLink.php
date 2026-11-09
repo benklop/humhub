@@ -1,5 +1,5 @@
 <?php
 return array (
-  'Pinned' => 'Kiemelt',
-  'Unpinned' => '',
+  'Pinned' => 'Rögzítve',
+  'Unpinned' => 'Rögzítés visszavonása',
 );

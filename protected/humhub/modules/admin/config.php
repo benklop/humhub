@@ -6,38 +6,40 @@
  * @license https://www.humhub.com/licences
  */
 
+use humhub\modules\admin\Module;
 use humhub\modules\dashboard\widgets\Sidebar;
 use humhub\modules\admin\Events;
 use humhub\commands\CronController;
+use humhub\modules\user\components\User;
 
 return [
     'id' => 'admin',
-    'class' => \humhub\modules\admin\Module::className(),
+    'class' => Module::class,
     'isCoreModule' => true,
     'events' => [
         [
-            'class' => Sidebar::className(),
+            'class' => User::class,
+            'event' => User::EVENT_BEFORE_SWITCH_IDENTITY,
+            'callback' => [
+                Events::class,
+                'onSwitchUser',
+            ],
+        ],
+        [
+            'class' => Sidebar::class,
             'event' => Sidebar::EVENT_INIT,
             'callback' => [
-                Events::className(),
-                'onDashboardSidebarInit'
-            ]
+                Events::class,
+                'onDashboardSidebarInit',
+            ],
         ],
         [
-            'class' => CronController::className(),
+            'class' => CronController::class,
             'event' => CronController::EVENT_ON_DAILY_RUN,
             'callback' => [
-                Events::className(),
-                'onCronDailyRun'
-            ]
-        ],
-        [
-            'class' => 'humhub\components\console\Application',
-            'event' => 'onInit',
-            'callback' => [
-                Events::className(),
-                'onConsoleApplicationInit'
-            ]
+                Events::class,
+                'onCronDailyRun',
+            ],
         ],
     ],
 ];

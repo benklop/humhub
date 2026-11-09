@@ -8,20 +8,28 @@
 
 namespace humhub\modules\user\widgets;
 
+use humhub\helpers\DeviceDetectorHelper;
+use humhub\modules\admin\widgets\AdminMenu;
+use humhub\modules\ui\menu\DropdownDivider;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\modules\ui\menu\widgets\Menu;
+use humhub\modules\user\controllers\AuthController;
+use humhub\modules\user\models\User;
+use humhub\widgets\modal\ModalButton;
 use Yii;
 use yii\helpers\Url;
-use humhub\widgets\BaseMenu;
 
 /**
  * AccountTopMenu Widget
  *
  * @author luke
  */
-class AccountTopMenu extends BaseMenu
+class AccountTopMenu extends Menu
 {
+    public $id = 'account-top-menu';
 
     /**
-     * @var boolean show user name
+     * @var bool show user name
      */
     public $showUserName = true;
 
@@ -36,54 +44,92 @@ class AccountTopMenu extends BaseMenu
     public function init()
     {
         if (Yii::$app->user->isGuest) {
+
+            $signUpText = AuthController::isSelfRegistrationEnabled()
+                ? Yii::t('UserModule.base', 'Sign in / up')
+                : Yii::t('UserModule.base', 'Sign in');
+
+
+            $this->addEntry(new MenuLink([
+                'link' => ModalButton::primary($signUpText)->load(Url::toRoute('/user/auth/login'))->cssClass('btn-enter'),
+                'sortOrder' => 100,
+            ]));
+
+            parent::init();
             return;
         }
 
         $user = Yii::$app->user->getIdentity();
-        $this->addItem(array(
-            'label' => Yii::t('base', 'My profile'),
-            'icon' => '<i class="fa fa-user"></i>',
+
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('base', 'My Profile'),
+            'icon' => 'user',
             'url' => $user->createUrl('/user/profile/home'),
-            'sortOrder' => 100,
-        ));
-        $this->addItem(array(
-            'label' => Yii::t('base', 'Account settings'),
-            'icon' => '<i class="fa fa-edit"></i>',
+            'sortOrder' => 100]));
+
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('base', 'Settings'),
+            'icon' => 'edit',
             'url' => Url::toRoute('/user/account/edit'),
             'sortOrder' => 200,
-        ));
+        ]));
 
-        if (\humhub\modules\admin\widgets\AdminMenu::canAccess()) {
-            $this->addItem(array(
-                'label' => '---',
-                'url' => '#',
-                'sortOrder' => 300,
-            ));
+        if (AdminMenu::canAccess()) {
+            $this->addEntry(new DropdownDivider(['sortOrder' => 300]));
 
-            $this->addItem(array(
+
+            $this->addEntry(new MenuLink([
                 'label' => Yii::t('base', 'Administration'),
-                'icon' => '<i class="fa fa-cogs"></i>',
+                'icon' => 'cogs',
                 'url' => Url::toRoute('/admin'),
                 'sortOrder' => 400,
-            ));
+            ]));
         }
 
-        $this->addItem(array(
-            'label' => '---',
-            'url' => '#',
-            'sortOrder' => 600,
-        ));
+        $this->addEntry(new DropdownDivider(['sortOrder' => 600]));
 
-        $this->addItem(array(
+        if (DeviceDetectorHelper::isMultiInstanceApp()) {
+            $this->addEntry(new MenuLink([
+                'label' => Yii::t('base', 'Switch network'),
+                'url' => ['/mobile-app/instance-opener'],
+                'icon' => 'arrows-h',
+                'sortOrder' => 699,
+            ]));
+        }
+
+        $this->addEntry(new MenuLink([
             'label' => Yii::t('base', 'Logout'),
             'id' => 'account-logout',
-            'icon' => '<i class="fa fa-sign-out"></i>',
-            'pjax' => false,
+            'icon' => 'sign-out',
+            'pjaxEnabled' => false,
             'url' => Url::toRoute('/user/auth/logout'),
+            'htmlOptions' => ['data-method' => 'POST'],
             'sortOrder' => 700,
-        ));
+        ]));
+
+        if (Yii::$app->user->impersonation->isActive()) {
+            $this->addEntry(new MenuLink([
+                'label' => Yii::t('base', 'Stop impersonation'),
+                'id' => 'account-login',
+                'icon' => 'sign-in',
+                'pjaxEnabled' => false,
+                'url' => Url::toRoute('/user/auth/stop-impersonation'),
+                'htmlOptions' => ['data-method' => 'POST'],
+                'sortOrder' => 800,
+            ]));
+        }
 
         parent::init();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getAttributes()
+    {
+        return [
+            'class' => 'nav',
+        ];
     }
 
 }

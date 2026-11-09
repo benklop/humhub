@@ -1,47 +1,40 @@
 <?php
 
-/**
- * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
- * @license https://www.humhub.com/licences
- */
-
 namespace humhub\modules\comment;
 
+use humhub\modules\content\components\ContentActiveRecord;
+use humhub\modules\content\events\ContentEvent;
+use humhub\modules\content\widgets\WallEntryAddons;
 use humhub\modules\comment\models\Comment;
-use humhub\modules\search\events\SearchAttributesEvent;
-use humhub\modules\search\engine\Search;
+use Yii;
+use yii\base\Component;
 use yii\base\Event;
 
-/**
- * Events provides callbacks to handle events.
- * 
- * @author luke
- */
-class Events extends \yii\base\Component
+class Events extends Component
 {
-
-    /**
-     * On content deletion make sure to delete all its comments
-     *
-     * @param CEvent $event
-     */
-    public static function onContentDelete($event)
+    public static function onContentDelete(Event $event)
     {
+        /** @var ContentActiveRecord $sender */
+        $sender = $event->sender;
 
-        foreach (models\Comment::find()->where(['object_model' => $event->sender->className(), 'object_id' => $event->sender->id])->all() as $comment) {
+        foreach (Comment::find()->where(['content_id' => $sender->content->id])->all() as $comment) {
             $comment->delete();
         }
     }
 
     /**
-     * On User delete, also delete all comments
-     *
-     * @param CEvent $event
+     * On hard delete of a Content record without a polymorphic content object
+     * (e.g. cleaned up by the IntegrityController), delete all its comments too.
      */
-    public static function onUserDelete($event)
+    public static function onContentHardDelete(ContentEvent $event)
     {
+        foreach (Comment::findAll(['content_id' => $event->content->id]) as $comment) {
+            $comment->delete();
+        }
+    }
 
+    public static function onUserDelete(Event $event)
+    {
         foreach (Comment::findAll(['created_by' => $event->sender->id]) as $comment) {
             $comment->delete();
         }
@@ -49,31 +42,30 @@ class Events extends \yii\base\Component
         return true;
     }
 
-    /**
-     * Callback to validate module database records.
-     *
-     * @param Event $event
-     */
-    public static function onIntegrityCheck($event)
+    public static function onIntegrityCheck(Event $event)
     {
         $integrityController = $event->sender;
-        $integrityController->showTestHeadline("Comment Module (" . Comment::find()->count() . " entries)");
+        $integrityController->showTestHeadline('Comment Module (' . Comment::find()->count() . ' entries)');
 
         // Loop over all comments
-        foreach (Comment::find()->all() as $c) {
+        /** @var Comment $c */
+        foreach (Comment::find()->each() as $c) {
 
             // Check underlying record exists
-            if ($c->source === null) {
-                if ($integrityController->showFix("Deleting comment id " . $c->id . " without existing target!")) {
-                    $c->delete();
-                }
+            if (
+                !$c->getContent()->exists()
+                && $integrityController->showFix('Deleting comment id ' . $c->id . ' without existing target!')
+            ) {
+                $c->delete();
+                continue;
             }
 
             // User exists
-            if ($c->user === null) {
-                if ($integrityController->showFix("Deleting comment id " . $c->id . " without existing user!")) {
-                    $c->delete();
-                }
+            if (
+                !$c->getCreatedBy()->exists()
+                && $integrityController->showFix('Deleting comment id ' . $c->id . ' without existing user!')
+            ) {
+                $c->delete();
             }
         }
     }
@@ -81,7 +73,7 @@ class Events extends \yii\base\Component
     /**
      * On init of the WallEntryLinksWidget, attach the comment link widget.
      *
-     * @param CEvent $event
+     * @param Event $event
      */
     public static function onWallEntryLinksInit($event)
     {
@@ -89,43 +81,30 @@ class Events extends \yii\base\Component
             return;
         }
 
-        if (\Yii::$app->getModule('comment')->canComment($event->sender->object->content)) {
-            $event->sender->addWidget(widgets\CommentLink::className(), ['object' => $event->sender->object], ['sortOrder' => 10]);
+        $content = $event->sender->object->content;
+
+        /** @var Module $module */
+        $module = Yii::$app->getModule('comment');
+
+        if ((Yii::$app->user->isGuest && $module->guestHideComments) || $module->canComment($content)) {
+            $event->sender->addWidget(widgets\CommentLink::class, ['content' => $content], ['sortOrder' => 10]);
         }
     }
 
     /**
      * On init of the WallEntryAddonWidget, attach the comment widget.
      *
-     * @param CEvent $event
+     * @param Event $event
      */
     public static function onWallEntryAddonInit($event)
     {
-        $event->sender->addWidget(widgets\Comments::className(), ['object' => $event->sender->object], ['sortOrder' => 20]);
-    }
+        /* @var WallEntryAddons $wallEntryAddons */
+        $wallEntryAddons = $event->sender;
 
-    /**
-     * Handles the SearchAttributesEvent and adds related comments 
-     * 
-     * @since 1.2.3
-     * @param SearchAttributesEvent $event
-     */
-    public static function onSearchAttributes(SearchAttributesEvent $event)
-    {
-        if (!isset($event->attributes['comments'])) {
-            $event->attributes['comments'] = [];
-        }
-
-        foreach (Comment::findAll(['object_model' => $event->record->className(), 'object_id' => $event->record->id]) as $comment) {
-            /* @var $comment Comment */
-            $event->attributes['comments'][$comment->id] = [
-                'author' => ($comment->user !== null) ? $comment->user->displayName : '',
-                'message' => $comment->message
-            ];
-            
-            // Add comment related attributes (e.g. files)
-            Event::trigger(Search::class, Search::EVENT_SEARCH_ATTRIBUTES, new SearchAttributesEvent($event->attributes['comments'][$comment->id], $comment));
-        }
+        $wallEntryAddons->addWidget(widgets\Comments::class, [
+            'content' => $wallEntryAddons->object->content,
+            'renderOptions' => $wallEntryAddons->renderOptions,
+        ], ['sortOrder' => 30]);
     }
 
 }

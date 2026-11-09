@@ -1,41 +1,29 @@
 <?php
 
+use humhub\helpers\Html;
+use humhub\modules\admin\models\forms\ApproveUserForm;
+use humhub\modules\content\widgets\richtext\RichTextField;
+use humhub\modules\user\models\User;
+use humhub\widgets\bootstrap\Button;
+use humhub\widgets\form\ActiveForm;
 use yii\helpers\Url;
-use yii\helpers\Html;
-use humhub\compat\CActiveForm;
+
+/* @var $model User */
+/* @var $approveFormModel ApproveUserForm */
 ?>
 
 <div class="panel-body">
-    <h4><?= Yii::t('AdminModule.views_approval_approveUserDecline', 'Decline & delete user: <strong>{displayName}</strong>', ['{displayName}' => Html::encode($model->displayName)]); ?></h4>
+    <h4><?= Yii::t('AdminModule.user', 'Decline & delete user: <strong>{displayName}</strong>', ['{displayName}' => Html::encode($model->displayName)]); ?></h4>
 
-    <?php $form = CActiveForm::begin(); ?>
+    <?php $form = ActiveForm::begin(); ?>
 
-    <div class="form-group">
-        <?= $form->labelEx($approveFormModel, 'subject'); ?>
-        <?= $form->textField($approveFormModel, 'subject', ['class' => 'form-control']); ?>
-        <?= $form->error($approveFormModel, 'subject'); ?>
-    </div>
+    <?= $form->field($approveFormModel, 'subject')->textInput(['class' => 'form-control']); ?>
 
-    <div class="form-group">
-        <?= $form->labelEx($approveFormModel, 'message'); ?>
-        <?= $form->textArea($approveFormModel, 'message', ['rows' => 6, 'cols' => 50, 'class' => 'form-control autosize']); ?>
-        <?= $form->error($approveFormModel, 'message'); ?>
-    </div>
-    <script>
-        /*$('.wysihtml5').wysihtml5({
-            "font-styles": false, //Font styling, e.g. h1, h2, etc. Default true
-            "emphasis": true, //Italics, bold, etc. Default true
-            "lists": false, //(Un)ordered lists, e.g. Bullets, Numbers. Default true
-            "html": false, //Button which allows you to edit the generated HTML. Default false
-            "link": true, //Button to insert a link. Default true
-            "image": false, //Button to insert an image. Default true,
-            "color": false, //Button to change color of font
-            "size": 'sm' //Button size like sm, xs etc.
-        });*/
-    </script>
+    <?= $form->field($approveFormModel, 'message')->widget(RichTextField::class, ['exclude' => ['oembed', 'upload']]); ?>
+
     <hr>
-    <?= Html::submitButton(Yii::t('SpaceModule.approval_approveUserDecline', 'Send & decline'), ['class' => 'btn btn-danger', 'data-ui-loader' => ""]); ?>
-    <a href="<?= Url::to(['index']); ?>" data-ui-loader  class="btn btn-primary"><?= Yii::t('AdminModule.views_approval_approveUserDecline', 'Cancel'); ?></a>
+    <?= Button::save(Yii::t('AdminModule.user', 'Send & decline'))->submit(); ?>
+    <?= Button::primary(Yii::t('AdminModule.user', 'Cancel'))->link(Url::to(['index'])); ?>
 
-    <?php CActiveForm::end(); ?>
+    <?php ActiveForm::end(); ?>
 </div>

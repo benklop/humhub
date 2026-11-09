@@ -1,27 +1,20 @@
 <?php
+
 /**
  * @link https://www.humhub.org/
  * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
- *
- */
-
-/**
- * Created by PhpStorm.
- * User: buddha
- * Date: 24.07.2017
- * Time: 15:56
  */
 
 namespace humhub\modules\content\tests\codeception\unit;
 
-
 use humhub\modules\content\models\Content;
 use humhub\modules\content\models\ContentTag;
 use humhub\modules\content\models\ContentTagRelation;
+use humhub\modules\content\services\ContentTagService;
 use humhub\modules\space\models\Space;
 use tests\codeception\_support\HumHubDbTestCase;
-use yii\base\InvalidParamException;
+use yii\base\InvalidArgumentException;
 
 class ContentTagTest extends HumHubDbTestCase
 {
@@ -52,9 +45,9 @@ class ContentTagTest extends HumHubDbTestCase
         $space2 = Space::findOne(2);
         $this->assertTrue($this->createTestTag('testTag1', $space2));
 
-        // Global tag should be able to use the same name
+        // Global tag should not be able to use the same name
         $tag = new TestTagOtherModule(null, 'testTag1');
-        $this->assertTrue($tag->save());
+        $this->assertFalse($tag->save());
     }
 
     public function testFindByContainer()
@@ -97,7 +90,7 @@ class ContentTagTest extends HumHubDbTestCase
         $content = Content::findOne(1);
         $tag2 = new TestTagSameModule($content->getContainer(), 'test2');
         $tag2->save();
-        $content->addTag($tag2);
+        (new ContentTagService($content))->addTag($tag2);
         $this->assertEquals(1, count($content->tagRelations));
 
         $tag2->delete();
@@ -106,16 +99,84 @@ class ContentTagTest extends HumHubDbTestCase
 
     }
 
+    public function testTagDeletionByModule()
+    {
+        $space2 = Space::findOne(2);
+        $this->assertTrue($this->createTestTag('testTag1'));
+        $this->assertTrue($this->createTestTag('testTag2'));
+        $this->assertTrue($this->createTestTag('testTag3', $space2));
+
+        $this->assertEquals(3, TestTag::find()->count());
+
+        TestTag::deleteByModule();
+
+        $this->assertEquals(0, TestTag::find()->count());
+    }
+
+    public function testTagDeletionByModule2()
+    {
+        $space2 = Space::findOne(2);
+        $this->assertTrue($this->createTestTag('testTag1'));
+        $this->assertTrue($this->createTestTag('testTag2'));
+        $this->assertTrue($this->createTestTag('testTag3', $space2));
+
+        $this->assertEquals(3, TestTag::find()->count());
+
+        TestTag::deleteByModule($space2);
+
+        $this->assertEquals(2, TestTag::find()->count());
+    }
+
+    public function testTagDeletionByModuleAndContainer()
+    {
+        $space2 = Space::findOne(2);
+        $this->assertTrue($this->createTestTag('testTag1'));
+        $this->assertTrue($this->createTestTag('testTag2'));
+        $this->assertTrue($this->createTestTag('testTag3', $space2));
+
+        $this->assertEquals(3, TestTag::find()->count());
+
+        TestTag::deleteByModule($space2);
+
+        $this->assertEquals(2, TestTag::find()->count());
+    }
+
+    public function testDeleteAll()
+    {
+        $space2 = Space::findOne(2);
+        $this->assertTrue($this->createTestTag('testTag1'));
+        $this->assertTrue($this->createTestTag('testTag2'));
+        $this->assertTrue($this->createTestTag('testTag3', $space2));
+        $this->assertTrue($this->createTestTag('testTag4', $space2));
+
+        $this->assertTrue($this->createOtherTestTag('testTagA'));
+        $this->assertTrue($this->createOtherTestTag('testTagB'));
+        $this->assertTrue($this->createOtherTestTag('testTagC', $space2));
+
+        $this->assertEquals(4, count(TestTag::findAll(null)));
+        $this->assertEquals(3, count(TestTagSameModule::findAll(null)));
+
+        $count = TestTagSameModule::deleteAll();
+        $this->assertEquals(3, $count);
+
+        $this->assertEquals(4, count(TestTag::findAll(null)));
+        $this->assertEquals(0, count(TestTagSameModule::findAll(null)));
+    }
+
     public function testContentDeletion()
     {
         $content = Content::findOne(1);
         $tag2 = new TestTagSameModule($content->getContainer(), 'test2');
         $tag2->save();
-        $content->addTag($tag2);
+        (new ContentTagService($content))->addTag($tag2);
         $this->assertEquals(1, ContentTagRelation::find()->count());
 
-        $content->delete();
-        $this->assertEquals(0, ContentTagRelation::find()->count());
+        $content->getPolymorphicRelation()->delete();
+        $this->assertEquals(1, Content::find()->where(['id' => 1])->count());
+        $this->assertEquals(0, Content::find()->where(['id' => 1, 'state' => Content::STATE_PUBLISHED])->count());
+
+        $content->getPolymorphicRelation()->hardDelete();
+        $this->assertEquals(0, Content::find()->where(['id' => 1])->count());
 
     }
 
@@ -123,43 +184,46 @@ class ContentTagTest extends HumHubDbTestCase
     {
         $this->space = Space::findOne(['id' => 3]);
         $tag = new TestTag($this->space, 'test');
+
+        /** @var Content $content */
         $content = Content::findOne(1);
 
+        // Try add unsaved tag to content (should fail)
         try {
-            $content->addTag($tag);
+            (new ContentTagService($content))->addTag($tag);
             $this->assertTrue(false);
-        } catch(InvalidParamException $e) {
-            // Tag was not saved
+        } catch (InvalidArgumentException) {
             $this->assertTrue(true);
         }
 
         $this->assertTrue($tag->save());
 
+        // Try add tag without container relation (should fail)
         try {
-            $content->addTag($tag);
+            (new ContentTagService($content))->addTag($tag);
             $this->assertTrue(false);
-        } catch(InvalidParamException $e) {
-            // Tag assigned with invalid container_id
+        } catch (InvalidArgumentException) {
             $this->assertTrue(true);
         }
 
         $tag->contentcontainer_id = $content->contentcontainer_id;
 
-        $this->assertTrue($content->addTag($tag));
+        // Try adding the same tag twice (should only be added once)
+        $this->assertTrue((new ContentTagService($content))->addTag($tag));
         $this->assertEquals(1, count($content->tags));
 
-        $this->assertTrue($content->addTag($tag));
+        $this->assertTrue((new ContentTagService($content))->addTag($tag));
         $this->assertEquals(1, count($content->tags));
-
 
         $tag2 = new TestTagSameModule($content->getContainer(), 'test2');
-        $tag2->save();
-        $content->addTag($tag2);
+        $this->assertTrue($tag2->save());
+
+        $this->assertTrue((new ContentTagService($content))->addTag($tag2));
         $this->assertEquals(2, count($content->tags));
 
         $tag3 = new TestTagOtherModule($content->getContainer(), 'test3');
         $tag3->save();
-        $content->addTag($tag3);
+        (new ContentTagService($content))->addTag($tag3);
         $this->assertEquals(3, count($content->tags));
 
         $sameModuleTags = TestTagSameModule::findByContent($content)->all();
@@ -181,7 +245,7 @@ class ContentTagTest extends HumHubDbTestCase
     {
         $container = (!$container) ? $this->space : $container;
 
-        if(!$container) {
+        if (!$container) {
             $container = $this->space = Space::findOne(['id' => 3]);
         }
 
@@ -193,7 +257,7 @@ class ContentTagTest extends HumHubDbTestCase
     {
         $container = (!$container) ? $this->space : $container;
 
-        if(!$container) {
+        if (!$container) {
             $container = $this->space = Space::findOne(['id' => 3]);
         }
 
@@ -205,13 +269,11 @@ class ContentTagTest extends HumHubDbTestCase
     {
         $container = (!$container) ? $this->space : $container;
 
-        if(!$container) {
+        if (!$container) {
             $container = $this->space = Space::findOne(['id' => 3]);
         }
 
         $tag = new TestTagOtherModule($container, $name);
         return $tag->save();
     }
-
-
 }

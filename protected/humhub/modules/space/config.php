@@ -1,28 +1,34 @@
 <?php
 
-use humhub\modules\search\engine\Search;
+use humhub\modules\space\widgets\HeaderControlsMenu;
 use humhub\modules\user\models\User;
 use humhub\modules\space\Events;
-use humhub\components\console\Application;
+use humhub\modules\space\Module;
 use humhub\commands\IntegrityController;
+use humhub\widgets\TopMenu;
 
 return [
     'id' => 'space',
-    'class' => \humhub\modules\space\Module::className(),
+    'class' => Module::class,
     'isCoreModule' => true,
     'urlManagerRules' => [
-        ['class' => 'humhub\modules\space\components\UrlRule']
+        ['class' => 'humhub\modules\space\components\UrlRule'],
+        'spaces' => 'space/spaces',
+        '<spaceContainer>/home' => 'space/space/home',
+        '<spaceContainer>/about' => 'space/space/about',
     ],
     'modules' => [
         'manage' => [
-            'class' => 'humhub\modules\space\modules\manage\Module'
+            'class' => 'humhub\modules\space\modules\manage\Module',
         ],
     ],
-    'events' => array(
-        array('class' => User::className(), 'event' => User::EVENT_BEFORE_DELETE, 'callback' => array(Events::className(), 'onUserDelete')),
-        array('class' => Search::className(), 'event' => Search::EVENT_ON_REBUILD, 'callback' => array(Events::className(), 'onSearchRebuild')),
-        array('class' => Application::className(), 'event' => Application::EVENT_ON_INIT, 'callback' => array(Events::className(), 'onConsoleApplicationInit')),
-        array('class' => IntegrityController::className(), 'event' => IntegrityController::EVENT_ON_RUN, 'callback' => array(Events::className(), 'onIntegrityCheck')),
-    ),
+    'consoleControllerMap' => [
+        'space' => 'humhub\modules\space\commands\SpaceController',
+    ],
+    'events' => [
+        [User::class, User::EVENT_BEFORE_SOFT_DELETE, [Events::class, 'onUserSoftDelete']],
+        [IntegrityController::class, IntegrityController::EVENT_ON_RUN, [Events::class, 'onIntegrityCheck']],
+        [TopMenu::class, TopMenu::EVENT_INIT, [Events::class, 'onTopMenuInit']],
+        [HeaderControlsMenu::class, HeaderControlsMenu::EVENT_INIT, [Events::class, 'onSpaceHeaderControlsMenuInit']],
+    ],
 ];
-?>

@@ -1,23 +1,16 @@
 <?php
+
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2018 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  *
  */
 
-/**
- * Created by PhpStorm.
- * User: buddha
- * Date: 30.07.2017
- * Time: 04:04
- */
-
 namespace humhub\components\access;
 
-
 use Yii;
-use yii\base\InvalidParamException;
+use yii\base\InvalidArgumentException;
 
 class PermissionAccessValidator extends ActionAccessValidator
 {
@@ -27,7 +20,7 @@ class PermissionAccessValidator extends ActionAccessValidator
 
     protected function validate($rule)
     {
-        if(Yii::$app->user->isAdmin()) {
+        if (Yii::$app->user->isAdmin()) {
             return true;
         }
 
@@ -35,7 +28,7 @@ class PermissionAccessValidator extends ActionAccessValidator
             return $this->verifyPermission($rule[$this->name], $rule);
         }
 
-        throw new InvalidParamException('Invalid permission rule provided for action ' . $this->action);
+        throw new InvalidArgumentException('Invalid permission rule provided for action ' . $this->action);
     }
 
     /**

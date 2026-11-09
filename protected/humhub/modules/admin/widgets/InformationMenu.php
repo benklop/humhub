@@ -8,56 +8,55 @@
 
 namespace humhub\modules\admin\widgets;
 
+use humhub\helpers\ControllerHelper;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\modules\ui\menu\widgets\TabMenu;
 use Yii;
-use yii\helpers\Url;
 
 /**
  * Group Administration Menu
  */
-class InformationMenu extends \humhub\widgets\BaseMenu
+class InformationMenu extends TabMenu
 {
-
     /**
      * @inheritdoc
      */
-    public $template = "@humhub/widgets/views/tabMenu";
-
     public function init()
     {
-        $this->addItem([
+        $this->addEntry(new MenuLink([
             'label' => Yii::t('AdminModule.information', 'About HumHub'),
-            'url' => Url::to(['/admin/information/about']),
+            'url' => ['/admin/information/about'],
             'sortOrder' => 100,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'information' && Yii::$app->controller->action->id == 'about'),
-        ]);
+            'isActive' => ControllerHelper::isActivePath('admin', 'information', 'about'),
+        ]));
 
-        $this->addItem([
+        $this->addEntry(new MenuLink([
             'label' => Yii::t('AdminModule.information', 'Prerequisites'),
-            'url' => Url::to(['/admin/information/prerequisites']),
+            'url' => ['/admin/information/prerequisites'],
             'sortOrder' => 200,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'information' && Yii::$app->controller->action->id == 'prerequisites'),
-        ]);
+            'isActive' => ControllerHelper::isActivePath('admin', 'information', 'prerequisites'),
+        ]));
 
-        $this->addItem([
+        $this->addEntry(new MenuLink([
             'label' => Yii::t('AdminModule.information', 'Database'),
-            'url' => Url::to(['/admin/information/database']),
+            'url' => ['/admin/information/database'],
             'sortOrder' => 300,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'information' && Yii::$app->controller->action->id == 'database'),
-        ]);
+            'isActive' => ControllerHelper::isActivePath('admin', 'information', 'database'),
+        ]));
 
-        $this->addItem([
-            'label' => Yii::t('AdminModule.information', 'CronJobs'),
-            'url' => Url::to(['/admin/information/cronjobs']),
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('AdminModule.information', 'Background Jobs'),
+            'url' => ['/admin/information/background-jobs'],
             'sortOrder' => 400,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'information' && Yii::$app->controller->action->id == 'cronjobs'),
-        ]);
+            'isActive' => ControllerHelper::isActivePath('admin', 'information', 'background-jobs'),
+        ]));
 
-        $this->addItem([
+        $this->addEntry(new MenuLink([
             'label' => Yii::t('AdminModule.information', 'Logging'),
-            'url' => Url::toRoute(['/admin/logging']),
+            'url' => ['/admin/logging'],
             'sortOrder' => 500,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'logging'),
-        ]);
+            'isActive' => ControllerHelper::isActivePath('admin', 'logging'),
+        ]));
 
         parent::init();
     }

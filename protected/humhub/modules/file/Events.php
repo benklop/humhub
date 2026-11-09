@@ -8,27 +8,28 @@
 
 namespace humhub\modules\file;
 
-use humhub\modules\search\engine\Search;
+use humhub\components\ActiveRecord;
+use humhub\components\behaviors\PolymorphicRelation;
 use humhub\modules\file\models\File;
+use yii\base\BaseObject;
 use yii\base\Event;
-use humhub\modules\search\events\SearchAttributesEvent;
+use yii\helpers\Console;
 
 /**
  * Events provides callbacks to handle events.
- * 
+ *
  * @author luke
  */
-class Events extends \yii\base\Object
+class Events extends BaseObject
 {
-
     /**
      * On init of the WallEntryAddonWidget, attach the files of the content.
      *
-     * @param CEvent $event
+     * @param Event $event
      */
     public static function onWallEntryAddonInit($event)
     {
-        $event->sender->addWidget(widgets\ShowFiles::className(), array('object' => $event->sender->object), array('sortOrder' => 5));
+        $event->sender->addWidget(widgets\ShowFiles::class, ['object' => $event->sender->object], ['sortOrder' => 5]);
     }
 
     /**
@@ -36,7 +37,7 @@ class Events extends \yii\base\Object
      * We delete all files which are not assigned to object_model/object_id
      * within 1 day.
      *
-     * @param type $event
+     * @param Event $event
      */
     public static function onCronDailyRun($event)
     {
@@ -46,11 +47,11 @@ class Events extends \yii\base\Object
 
         // Delete unused files
         $deleteTime = time() - (60 * 60 * 24 * 1); // Older than 1 day
-        foreach (File::find()->andWhere(['<', 'created_at', date('Y-m-d', $deleteTime)])->andWhere('(object_model IS NULL or object_model = "")')->all() as $file) {
+        foreach (File::find()->andWhere(['<', 'created_at', date('Y-m-d', $deleteTime)])->andWhere('(object_model IS NULL or object_model = "")')->andWhere(['standalone' => 0])->all() as $file) {
             $file->delete();
         }
 
-        $controller->stdout('done.' . PHP_EOL, \yii\helpers\Console::FG_GREEN);
+        $controller->stdout('done.' . PHP_EOL, Console::FG_GREEN);
     }
 
     /**
@@ -63,7 +64,7 @@ class Events extends \yii\base\Object
         $integrityController = $event->sender;
         $integrityController->showTestHeadline("File Module (" . File::find()->count() . " entries)");
 
-        foreach (File::find()->all() as $file) {
+        foreach (File::find()->each() as $file) {
             if ($file->object_model != "" && $file->object_id != "" && $file->getPolymorphicRelation() === null) {
                 if ($integrityController->showFix("Deleting file id " . $file->id . " without existing target!")) {
                     $file->delete();
@@ -75,17 +76,17 @@ class Events extends \yii\base\Object
     /**
      * On delete of a model, check there are files bound to it and delete them
      *
-     * @param CEvent $event
+     * @param Event $event
      */
     public static function onBeforeActiveRecordDelete($event)
     {
-
-        $model = $event->sender->className();
-        $pk = $event->sender->getPrimaryKey();
+        /* @var ActiveRecord $record */
+        $record = $event->sender;
+        $pk = $record->getPrimaryKey();
 
         // Check if primary key exists and is not array (multiple pk)
         if ($pk !== null && !is_array($pk)) {
-            foreach (File::find()->where(['object_id' => $pk, 'object_model' => $model])->all() as $file) {
+            foreach (File::find()->where(['object_id' => $pk, 'object_model' => PolymorphicRelation::getObjectModel($record)])->all() as $file) {
                 $file->delete();
             }
         }
@@ -93,33 +94,9 @@ class Events extends \yii\base\Object
 
     public static function onUserDelete($event)
     {
-        foreach (File::findAll(array('created_by' => $event->sender->id)) as $file) {
+        foreach (File::findAll(['created_by' => $event->sender->id]) as $file) {
             $file->delete();
         }
         return true;
     }
-
-    /**
-     * Handles the SearchAttributesEvent and adds related files
-     * 
-     * @since 1.2.3
-     * @param SearchAttributesEvent $event
-     */
-    public static function onSearchAttributes(SearchAttributesEvent $event)
-    {
-        if (!isset($event->attributes['files'])) {
-            $event->attributes['files'] = [];
-        }
-
-        foreach (File::findAll(['object_model' => $event->record->className(), 'object_id' => $event->record->id]) as $file) {
-            /* @var $file File */
-            $event->attributes['files'][$file->id] = [
-                'name' => $file->file_name
-            ];
-
-            // Add comment related attributes
-            Event::trigger(Search::class, Search::EVENT_SEARCH_ATTRIBUTES, new SearchAttributesEvent($event->attributes['files'][$file->id], $file));
-        }
-    }
-
 }

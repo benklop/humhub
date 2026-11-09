@@ -2,14 +2,17 @@
 
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2015 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2018 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
 
 namespace humhub\modules\admin\controllers;
 
 use Yii;
+use humhub\modules\admin\models\forms\LogFilterForm;
 use humhub\modules\admin\components\Controller;
+use humhub\modules\admin\permissions\SeeAdminInformation;
+use humhub\modules\admin\models\Log;
 
 /**
  * LoggingController provides access to the database logging.
@@ -18,7 +21,6 @@ use humhub\modules\admin\components\Controller;
  */
 class LoggingController extends Controller
 {
-
     /**
      * @inheritdoc
      */
@@ -28,43 +30,52 @@ class LoggingController extends Controller
     {
         $this->appendPageTitle(Yii::t('AdminModule.base', 'Logging'));
         $this->subLayout = '@admin/views/layouts/information';
-        
-		return parent::init();
+
+        parent::init();
     }
 
     /**
      * @inheritdoc
      */
-    public function getAccessRules()
+    protected function getAccessRules()
     {
         return [
-            ['permissions' => \humhub\modules\admin\permissions\SeeAdminInformation::className()]
+            ['permissions' => SeeAdminInformation::class],
         ];
     }
 
     public function actionIndex()
     {
-        $pageSize = 10;
+        $filter = new LogFilterForm();
 
-        $query = \humhub\modules\admin\models\Log::find();
-        $query->orderBy('id DESC');
+        if (Yii::$app->request->post()) {
+            $filter->load(Yii::$app->request->post());
+        } else {
+            $filter->load(Yii::$app->request->get());
+        }
 
-        $countQuery = clone $query;
-        $pagination = new \yii\data\Pagination(['totalCount' => $countQuery->count(), 'pageSize' => $pageSize]);
-        $query->offset($pagination->offset)->limit($pagination->limit);
+        $params = [
+            'filter' => $filter,
+            'logEntries' => $filter->findEntries(),
+            'pagination' => $filter->getPagination(),
+        ];
 
-        return $this->render('index', [
-            'logEntries' => $query->all(),
-            'pagination' => $pagination,
-        ]);
+        if (Yii::$app->request->isAjax && !Yii::$app->request->isPjax) {
+            return $this->asJson([
+                'html' => $this->renderPartial('log_entries', $params),
+                'url' => $filter->getUrl(),
+            ]);
+        }
+
+        return $this->render('index', $params);
     }
 
     public function actionFlush()
     {
         $this->forcePostRequest();
-        \humhub\modules\admin\models\Log::deleteAll();
-        
-		return $this->redirect(['index']);
+        Log::deleteAll();
+
+        return $this->redirect(['index']);
     }
 
 }

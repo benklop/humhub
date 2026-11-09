@@ -1,24 +1,15 @@
 <?php
 
 /**
- * HumHub
- * Copyright © 2014 The HumHub Project
- *
- * The texts of the GNU Affero General Public License with an additional
- * permission and of our proprietary license can be found at and
- * in the LICENSE file you have received along with this program.
- *
- * According to our dual licensing model, this program can be used either
- * under the terms of the GNU Affero General Public License, version 3,
- * or under a proprietary license.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
+ * @link https://www.humhub.org/
+ * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
+ * @license https://www.humhub.com/licences
  */
 
 namespace humhub\widgets;
+
+use yii\base\Widget;
+use yii\helpers\BaseInflector;
 
 /**
  * PanelMenuWidget add an dropdown menu to the panel header
@@ -27,13 +18,23 @@ namespace humhub\widgets;
  * @since 0.5
  * @author Andreas Strobel
  */
-class PanelMenu extends \yii\base\Widget
+class PanelMenu extends Widget
 {
+    /**
+     * Allow collapsing the HTML element having the `.collapse` class
+     *
+     * @since since 1.18
+     */
+    public bool $enableCollapseOption = true;
 
     /**
-     * @var String unique id from panel element
+     * Optional unique ID for the collapse element and the local storage state (expanded/collapsed)
+     *
+     * If the parent widget class is unique, it can be null
+     *
+     * @since since 1.18
      */
-    public $id = "";
+    public ?string $collapseId = null;
 
     /**
      * Workaround to inject menu items to PanelMenu
@@ -42,24 +43,17 @@ class PanelMenu extends \yii\base\Widget
      * @internal description
      * @var String
      */
-    public $extraMenus = "";
-
-    public function init()
-    {
-        return parent::init();
-    }
+    public $extraMenus = '';
 
     /**
      * Displays / Run the Widgets
      */
     public function run()
     {
-        return $this->render('panelMenu', array(
-                    'id' => $this->id,
-                    'extraMenus' => $this->extraMenus,
-        ));
+        return $this->render('panelMenu', [
+            'enableCollapseOption' => $this->enableCollapseOption,
+            'collapseId' => $this->collapseId ?? BaseInflector::slug($this->view->context::class), // Generate a unique ID from the parent Widget class name
+            'extraMenus' => $this->extraMenus,
+        ]);
     }
-
 }
-
-?>

@@ -8,6 +8,7 @@
 
 namespace humhub\modules\post\permissions;
 
+use humhub\libs\BasePermission;
 use Yii;
 use humhub\modules\user\models\User;
 use humhub\modules\space\models\Space;
@@ -15,9 +16,8 @@ use humhub\modules\space\models\Space;
 /**
  * CreatePost Permission
  */
-class CreatePost extends \humhub\libs\BasePermission
+class CreatePost extends BasePermission
 {
-
     /**
      * @inheritdoc
      */
@@ -27,16 +27,16 @@ class CreatePost extends \humhub\libs\BasePermission
         Space::USERGROUP_MODERATOR,
         Space::USERGROUP_MEMBER,
         User::USERGROUP_SELF,
-        User::USERGROUP_FRIEND
+        User::USERGROUP_FRIEND,
     ];
 
     /**
      * @inheritdoc
      */
     protected $fixedGroups = [
-        Space::USERGROUP_USER,
         Space::USERGROUP_GUEST,
-        User::USERGROUP_SELF
+        User::USERGROUP_SELF,
+        User::USERGROUP_GUEST,
     ];
 
     /**
@@ -49,7 +49,7 @@ class CreatePost extends \humhub\libs\BasePermission
      */
     public function getTitle()
     {
-        return Yii::t('PostModule.permissions', 'Create post');
+        return Yii::t('PostModule.base', 'Create post');
     }
 
     /**
@@ -58,9 +58,9 @@ class CreatePost extends \humhub\libs\BasePermission
     public function getDescription()
     {
         if ($this->contentContainer instanceof User) {
-            return Yii::t('PostModule.permissions', 'Allow others to create new posts on your profile page');
+            return Yii::t('PostModule.base', 'Allow others to create new posts on your profile page');
         }
-        return Yii::t('PostModule.permissions', 'Allows the user to create posts');
+        return Yii::t('PostModule.base', 'Allows the user to create posts');
     }
 
 }

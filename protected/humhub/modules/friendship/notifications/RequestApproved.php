@@ -8,9 +8,9 @@
 
 namespace humhub\modules\friendship\notifications;
 
-use Yii;
-use yii\bootstrap\Html;
+use humhub\helpers\Html;
 use humhub\modules\notification\components\BaseNotification;
+use Yii;
 
 /**
  * Friends Request
@@ -19,7 +19,6 @@ use humhub\modules\notification\components\BaseNotification;
  */
 class RequestApproved extends BaseNotification
 {
-
     /**
      * @inheritdoc
      */
@@ -40,7 +39,7 @@ class RequestApproved extends BaseNotification
      */
     public function category()
     {
-        return new FriendshipNotificationCategory;
+        return new FriendshipNotificationCategory();
     }
 
     /**
@@ -48,7 +47,7 @@ class RequestApproved extends BaseNotification
      */
     public function getUrl()
     {
-        return $this->originator->getUrl();
+        return $this->originator->getUrl(true);
     }
 
     /**
@@ -56,7 +55,7 @@ class RequestApproved extends BaseNotification
      */
     public function getMailSubject()
     {
-        return strip_tags($this->html());
+        return $this->getInfoText($this->originator->displayName);
     }
 
     /**
@@ -64,11 +63,13 @@ class RequestApproved extends BaseNotification
      */
     public function html()
     {
-        return Yii::t('FriendshipModule.notification', '{displayName} accepted your friend request.', [
-                    'displayName' => Html::tag('strong', Html::encode($this->originator->displayName)),
-        ]);
+        return $this->getInfoText(Html::tag('strong', Html::encode($this->originator->displayName)));
     }
 
+    private function getInfoText($displayName)
+    {
+        return Yii::t('FriendshipModule.notification', '{displayName} accepted your friend request.', [
+            'displayName' => $displayName,
+        ]);
+    }
 }
-
-?>

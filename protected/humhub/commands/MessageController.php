@@ -8,9 +8,12 @@
 
 namespace humhub\commands;
 
+use humhub\components\i18n\JsMessageExtractor;
 use Yii;
+use yii\base\Exception;
 use yii\helpers\Console;
 use yii\helpers\FileHelper;
+use yii\helpers\Json;
 
 /**
  * Extracts messages to be translated from source files.
@@ -19,7 +22,6 @@ use yii\helpers\FileHelper;
  */
 class MessageController extends \yii\console\controllers\MessageController
 {
-
     /**
      * Extracts messages for a given module from source code.
      *
@@ -41,10 +43,9 @@ class MessageController extends \yii\console\controllers\MessageController
         ], require($configFile));
 
         $config['sourcePath'] = $module->getBasePath();
+        $this->config = $config;
 
-        if (!is_dir($config['sourcePath'] . '/messages')) {
-            @mkdir($config['sourcePath'] . '/messages');
-        }
+        FileHelper::createDirectory($config['sourcePath'] . '/messages');
 
         $files = FileHelper::findFiles(realpath($config['sourcePath']), $config);
 
@@ -63,12 +64,25 @@ class MessageController extends \yii\console\controllers\MessageController
 
         foreach ($config['languages'] as $language) {
             $dir = $config['sourcePath'] . DIRECTORY_SEPARATOR . 'messages' . DIRECTORY_SEPARATOR . $language;
-            if (!is_dir($dir)) {
-                @mkdir($dir);
-            }
+            FileHelper::createDirectory($dir);
 
             $this->saveMessagesToPHP($messages, $dir, $config['overwrite'], $config['removeUnused'], $config['sort'], false);
         }
+
+
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected function extractMessages($fileName, $translator, $ignoreCategories = [])
+    {
+        $extension = pathinfo($fileName, PATHINFO_EXTENSION);
+        if (in_array($extension, ['js', 'jsx'])) {
+            return Yii::createObject(JsMessageExtractor::class)->extract($fileName, ['i18n.t'], $ignoreCategories);
+        }
+
+        return parent::extractMessages($fileName, $translator, $ignoreCategories);
     }
 
     /**
@@ -87,7 +101,7 @@ class MessageController extends \yii\console\controllers\MessageController
             if ($module !== null) {
                 // Use Module Directory
                 $dirName = str_replace(Yii::getAlias("@humhub/messages"), $module->getBasePath() . '/messages', $dirNameBase);
-                preg_match('/.*?Module\.(.*)/', $category, $result);
+                preg_match('/.*?Module\.(.*)/', (string) $category, $result);
                 $category = $result[1];
             } else {
                 // Use Standard HumHub Directory
@@ -115,16 +129,16 @@ class MessageController extends \yii\console\controllers\MessageController
     protected function getModuleByCategory($category)
     {
         if (preg_match('/(.*?)Module\./', $category, $result)) {
-            if (strpos($result[1], '-') !== false || strpos($result[1], '_') !== false) {
+            if (str_contains($result[1], '-') || str_contains($result[1], '_')) {
                 // module id already in correct format (-,_)
                 return Yii::$app->moduleManager->getModule($result[1], true);
             } else {
-                $moduleId = strtolower(preg_replace("/([A-Z])/", '_\1', lcfirst($result[1])));
+                $moduleId = strtolower((string) preg_replace("/([A-Z])/", '_\1', lcfirst($result[1])));
                 try {
                     return Yii::$app->moduleManager->getModule($moduleId, true);
-                } catch (\yii\base\Exception $ex) {
+                } catch (Exception) {
                     // Module not found, try again with dash syntax
-                    $moduleId = strtolower(preg_replace("/([A-Z])/", '-\1', lcfirst($result[1])));
+                    $moduleId = strtolower((string) preg_replace("/([A-Z])/", '-\1', lcfirst($result[1])));
                     return Yii::$app->moduleManager->getModule($moduleId, true);
                 }
             }
@@ -156,7 +170,7 @@ class MessageController extends \yii\console\controllers\MessageController
             $archive = [];
             $archiveFile = Yii::getAlias('@humhub/messages/' . $language . '/archive.json');
             if (file_exists($archiveFile)) {
-                $archive = \yii\helpers\Json::decode(file_get_contents($archiveFile));
+                $archive = Json::decode(file_get_contents($archiveFile));
             }
 
             // Loop overall messages
@@ -167,12 +181,12 @@ class MessageController extends \yii\console\controllers\MessageController
                         foreach ($messages as $original => $translated) {
 
                             // Removed unused marking
-                            if (substr($translated, 0, 2) == '@@' && substr($translated, -2, 2) == '@@') {
-                                $translated = preg_replace('/^@@/', '', $translated);
-                                $translated = preg_replace('/@@$/', '', $translated);
+                            if (str_starts_with((string) $translated, '@@') && str_ends_with((string) $translated, '@@')) {
+                                $translated = preg_replace('/^@@/', '', (string) $translated);
+                                $translated = preg_replace('/@@$/', '', (string) $translated);
                             }
 
-                            if ($translated != "") {
+                            if ($translated != '') {
                                 if (isset($archive[$original]) && !in_array($translated, $archive[$original])) {
                                     $archive[$original][] = $translated;
                                 } else {
@@ -185,10 +199,9 @@ class MessageController extends \yii\console\controllers\MessageController
             }
 
             // Save
-            file_put_contents($archiveFile, \yii\helpers\Json::encode($archive));
+            file_put_contents($archiveFile, Json::encode($archive));
 
             print "Saved!\n";
         }
     }
-
 }

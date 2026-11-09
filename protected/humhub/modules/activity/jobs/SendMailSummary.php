@@ -8,10 +8,12 @@
 
 namespace humhub\modules\activity\jobs;
 
-use Yii;
-use humhub\components\queue\ActiveJob;
-use humhub\modules\activity\components\MailSummaryProcessor;
 use humhub\modules\activity\components\MailSummary;
+use humhub\modules\activity\components\MailSummaryProcessor;
+use humhub\modules\activity\Module;
+use humhub\modules\queue\interfaces\ExclusiveJobInterface;
+use humhub\modules\queue\LongRunningActiveJob;
+use Yii;
 
 /**
  * SendMailSummary
@@ -19,25 +21,32 @@ use humhub\modules\activity\components\MailSummary;
  * @since 1.2
  * @author Luke
  */
-class SendMailSummary extends ActiveJob
+class SendMailSummary extends LongRunningActiveJob implements ExclusiveJobInterface
 {
+    public int $interval;
 
-    /**
-     * @var int the interval
-     */
-    public $interval;
+    public function getExclusiveJobId()
+    {
+        return static::class . $this->interval;
+    }
 
-    /**
-     * @inheritdoc
-     */
     public function run()
     {
-        if ($this->interval === MailSummary::INTERVAL_DAILY || $this->interval === MailSummary::INTERVAL_HOURY || $this->interval === MailSummary::INTERVAL_WEEKLY) {
+        /** @var Module $module */
+        $module = Yii::$app->getModule('activity');
+        if (!$module->enableMailSummaries) {
+            return;
+        }
+
+        if (in_array($this->interval, [
+            MailSummary::INTERVAL_DAILY,
+            MailSummary::INTERVAL_HOURLY,
+            MailSummary::INTERVAL_WEEKLY,
+            MailSummary::INTERVAL_MONTHLY,
+        ], true)) {
             MailSummaryProcessor::process($this->interval);
         } else {
             Yii::error('Invalid summary interval given' . $this->interval, 'activity.job');
-            return;
         }
     }
-
 }

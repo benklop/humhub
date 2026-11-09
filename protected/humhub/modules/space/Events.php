@@ -2,73 +2,57 @@
 
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2015 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2018 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
 
 namespace humhub\modules\space;
 
-use Yii;
-use humhub\modules\space\models\Space;
+use humhub\components\Event;
+use humhub\helpers\ControllerHelper;
+use humhub\modules\space\helpers\MembershipHelper;
 use humhub\modules\space\models\Membership;
-use yii\web\HttpException;
+use humhub\modules\space\models\Space;
+use humhub\modules\space\permissions\SpaceDirectoryAccess;
+use humhub\modules\space\widgets\HeaderControlsMenu;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\modules\user\events\UserEvent;
+use humhub\modules\user\models\Follow;
+use Yii;
+use yii\base\BaseObject;
 
 /**
  * Events provides callbacks for all defined module events.
- * 
+ *
  * @author luke
  */
-class Events extends \yii\base\Object
+class Events extends BaseObject
 {
-
     /**
-     * On rebuild of the search index, rebuild all space records
+     * Callback on user soft deletion
      *
-     * @param type $event
+     * @param UserEvent $event
      */
-    public static function onSearchRebuild($event)
+    public static function onUserSoftDelete(UserEvent $event)
     {
-        foreach (Space::find()->each() as $space) {
-            Yii::$app->search->add($space);
-        }
-    }
+        $user = $event->user;
 
-    /**
-     * On User delete, also delete his space related stuff
-     *
-     * @param type $event
-     */
-    public static function onUserDelete($event)
-    {
-
-        $user = $event->sender;
-
-        // Check if the user owns some spaces
-        foreach (Membership::GetUserSpaces($user->id) as $space) {
-            if ($space->isSpaceOwner($user->id)) {
-                throw new HttpException(500, Yii::t('SpaceModule.base', 'Could not delete user who is a space owner! Name of Space: {spaceName}', array('spaceName' => $space->name)));
-            }
+        // Delete spaces which this user owns
+        foreach (MembershipHelper::getOwnSpaces($user) as $ownedSpace) {
+            $ownedSpace->delete();
         }
 
         // Cancel all space memberships
-        foreach (Membership::findAll(array('user_id' => $user->id)) as $membership) {
+        foreach (Membership::findAll(['user_id' => $user->id]) as $membership) {
             // Avoid activities
             $membership->delete();
         }
 
         // Cancel all space invites by the user
-        foreach (Membership::findAll(array('originator_user_id' => $user->id, 'status' => Membership::STATUS_INVITED)) as $membership) {
+        foreach (Membership::findAll(['originator_user_id' => $user->id, 'status' => Membership::STATUS_INVITED]) as $membership) {
             // Avoid activities
             $membership->delete();
         }
-
-        return true;
-    }
-
-    public static function onConsoleApplicationInit($event)
-    {
-        $application = $event->sender;
-        $application->controllerMap['space'] = commands\SpaceController::className();
     }
 
     /**
@@ -81,7 +65,7 @@ class Events extends \yii\base\Object
         $integrityController = $event->sender;
 
         $integrityController->showTestHeadline("Space Module - Spaces (" . Space::find()->count() . " entries)");
-        foreach (Space::find()->all() as $space) {
+        foreach (Space::find()->each() as $space) {
             foreach ($space->applicants as $applicant) {
                 if ($applicant->user == null) {
                     if ($integrityController->showFix("Deleting applicant record id " . $applicant->id . " without existing user!")) {
@@ -91,20 +75,12 @@ class Events extends \yii\base\Object
             }
         }
 
-        $integrityController->showTestHeadline("Space Module - Module (" . models\Module::find()->count() . " entries)");
-        foreach (models\Module::find()->joinWith('space')->all() as $module) {
-            if ($module->space == null) {
-                if ($integrityController->showFix("Deleting space module " . $module->id . " without existing space!")) {
-                    $module->delete();
-                }
-            }
-        }
-
         $integrityController->showTestHeadline("Space Module - Memberships (" . models\Membership::find()->count() . " entries)");
-        foreach (models\Membership::find()->joinWith('space')->all() as $membership) {
+        foreach (models\Membership::find()->joinWith('space')->each() as $membership) {
             if ($membership->space == null) {
                 if ($integrityController->showFix("Deleting space membership " . $membership->space_id . " without existing space!")) {
                     $membership->delete();
+                    continue;
                 }
             }
             if ($membership->user == null) {
@@ -113,6 +89,63 @@ class Events extends \yii\base\Object
                 }
             }
         }
+
+        $integrityController->showTestHeadline('Space Module - Follow (' . Follow::find()->where(['object_model' => Space::class])->count() . ' entries)');
+        $follows = Follow::find()
+            ->innerJoin('space_membership', 'space_membership.user_id = user_follow.user_id AND space_membership.space_id = user_follow.object_id')
+            ->where(['user_follow.object_model' => Space::class])
+            ->andWhere(['space_membership.status' => Membership::STATUS_MEMBER]);
+        foreach ($follows->each() as $follow) {
+            /* @var Follow $follow */
+            if ($integrityController->showFix('Deleting a following of user #' . $follow->user_id . ' to space #' . $follow->object_id . ' because of membership!')) {
+                $follow->delete();
+            }
+        }
+    }
+
+    /**
+     * On build of the TopMenu
+     *
+     * @param Event $event
+     */
+    public static function onTopMenuInit($event)
+    {
+        /** @var Module $module */
+        $module = Yii::$app->getModule('space');
+        if ($module->hideSpacesPage) {
+            return;
+        }
+
+        if (!Yii::$app->user->isGuest
+            && !Yii::$app->user->can(SpaceDirectoryAccess::class)) {
+            return;
+        }
+
+        $event->sender->addEntry(new MenuLink([
+            'id' => 'spaces',
+            'icon' => 'dot-circle-o',
+            'label' => Yii::t('SpaceModule.base', 'Spaces'),
+            'url' => ['/space/spaces'],
+            'sortOrder' => 250,
+            'isActive' => ControllerHelper::isActivePath('space', 'spaces'),
+        ]));
+    }
+
+    public static function onSpaceHeaderControlsMenuInit($event)
+    {
+        /* @var HeaderControlsMenu $menu */
+        $menu = $event->sender;
+
+        if ($menu->space->getAdvancedSettings()->hideAbout) {
+            return;
+        }
+
+        $menu->addEntry(new MenuLink([
+            'label' => Yii::t('SpaceModule.base', 'About'),
+            'url' => $menu->space->createUrl('/space/space/about'),
+            'icon' => 'about',
+            'sortOrder' => 10000,
+        ]));
     }
 
 }

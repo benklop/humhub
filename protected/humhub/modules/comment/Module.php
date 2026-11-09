@@ -2,6 +2,9 @@
 
 namespace humhub\modules\comment;
 
+use humhub\modules\comment\permissions\CreateComment;
+use humhub\modules\comment\notifications\NewComment;
+use humhub\modules\content\models\Content;
 use Yii;
 
 /**
@@ -12,7 +15,6 @@ use Yii;
  */
 class Module extends \humhub\components\Module
 {
-
     /**
      * Maximum comments to load at once
      *
@@ -21,13 +23,34 @@ class Module extends \humhub\components\Module
     public $commentsBlockLoadSize = 10;
 
     /**
+     * @var int maximum comments to show initially
+     */
+    public $commentsPreviewMax = 2;
+
+    /**
+     * @var int Maximum comments to load at once on VIEW mode
+     */
+    public $commentsBlockLoadSizeViewMode = 25;
+
+    /**
+     * @var int Maximum comments to show initially on VIEW mode
+     */
+    public $commentsPreviewMaxViewMode = 25;
+
+    /**
+     * @since 1.19
+     * @var bool If true, comments are not shown to guest users at all.
+     */
+    public bool $guestHideComments = false;
+
+    /**
      * @inheritdoc
      */
     public function getPermissions($contentContainer = null)
     {
-        if ($contentContainer instanceof \humhub\modules\space\models\Space) {
+        if ($contentContainer) {
             return [
-                new permissions\CreateComment()
+                new permissions\CreateComment(),
             ];
         }
 
@@ -39,7 +62,7 @@ class Module extends \humhub\components\Module
      */
     public function getName()
     {
-        return Yii::t('CommentModule.views_comment_show', 'Comments');
+        return Yii::t('CommentModule.base', 'Comments');
     }
 
     /**
@@ -47,28 +70,40 @@ class Module extends \humhub\components\Module
      */
     public function getNotifications()
     {
-       return [
-           'humhub\modules\comment\notifications\NewComment'
-       ];
+        return [
+            NewComment::class,
+        ];
     }
 
     /**
-     * Checks if given content object can be commented
+     * Checks if given content object can be commented by current user
      *
-     * @param \humhub\modules\content\models\Content $content
-     * @return boolean can comment
+     * @return bool can comment
      */
-    public function canComment(\humhub\modules\content\models\Content $content)
+    public function canComment(Content $content)
     {
+        if (Yii::$app->user->isGuest) {
+            return false;
+        }
 
-        if ($content->container instanceof \humhub\modules\space\models\Space) {
-            $space = $content->container;
-            if (!$space->permissionManager->can(new permissions\CreateComment())) {
+        if (!$content->getStateService()->isPublished()) {
+            return false;
+        }
+
+        if ($content->container) {
+            if (!$content->container->permissionManager->can(CreateComment::class)) {
                 return false;
             }
         }
 
+        if ($content->isLockedComments()) {
+            return false;
+        }
+
+        if ($content->isArchived()) {
+            return false;
+        }
+
         return true;
     }
-
 }

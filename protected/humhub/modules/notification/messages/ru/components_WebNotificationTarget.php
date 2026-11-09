@@ -1,5 +1,5 @@
-<?php
+<?php /* Translated by Paul (https://paul.bid) www.paul.bid@gmail.com */
 return array (
-  'E-Mail' => 'e-mail',
-  'Web' => '',
+  'E-Mail' => 'Email',
+  'Web' => 'Сайт',
 );

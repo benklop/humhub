@@ -1,37 +1,52 @@
 <?php
 
-use yii\bootstrap\ActiveForm;
-use yii\helpers\Html;
+use humhub\components\View;
+use humhub\modules\content\widgets\ContainerTagPicker;
+use humhub\modules\content\widgets\richtext\RichTextField;
+use humhub\modules\space\models\Space;
 use humhub\modules\space\modules\manage\widgets\DefaultMenu;
+use humhub\modules\space\widgets\SpaceNameColorInput;
+use humhub\modules\user\widgets\UserPickerField;
+use humhub\widgets\bootstrap\Button;
+use humhub\widgets\form\ActiveForm;
+
+/* @var $this View
+ * @var $model Space
+ */
+
 ?>
 
 <div class="panel panel-default">
     <div>
         <div class="panel-heading">
-            <?php echo Yii::t('SpaceModule.views_settings', '<strong>Space</strong> settings'); ?>
+            <?= Yii::t('SpaceModule.manage', '<strong>Space</strong> settings'); ?>
         </div>
     </div>
 
     <?= DefaultMenu::widget(['space' => $model]); ?>
+
     <div class="panel-body">
 
-        <?php $form = ActiveForm::begin(['options' => ['id' => 'spaceIndexForm'], 'enableClientValidation' => false]); ?>
-        
-        <?= humhub\modules\space\widgets\SpaceNameColorInput::widget(['form' => $form, 'model' => $model])?>
+        <?php $form = ActiveForm::begin(['options' => ['id' => 'spaceIndexForm'], 'enableClientValidation' => false, 'acknowledge' => true]); ?>
 
-        <?php echo $form->field($model, 'description')->textarea(['rows' => 6]); ?>
+        <?= SpaceNameColorInput::widget(['form' => $form, 'model' => $model]) ?>
+        <?= $form->field($model, 'description')->textInput(['maxlength' => 100]); ?>
+        <?= $form->field($model, 'about')->widget(RichTextField::class); ?>
+        <?= $form->field($model, 'tagsField')->widget(ContainerTagPicker::class, ['minInput' => 2]); ?>
+        <?php if (Yii::$app->getModule('user')->allowBlockUsers()) : ?>
+            <?= $form->field($model, 'blockedUsersField')->widget(UserPickerField::class, ['minInput' => 2]); ?>
+        <?php endif; ?>
 
-        <?php echo $form->field($model, 'tags')->textInput(['maxlength' => 200]); ?>
+        <?= Button::save()->submit() ?>
 
+        <div class="float-end">
+            <?= Button::warning(Yii::t('SpaceModule.manage', 'Archive'))
+                ->action('space.archive', $model->createUrl('/space/manage/default/archive'))
+                ->cssClass('archive')->style(($model->status == Space::STATUS_ENABLED) ? 'display:inline' : 'display:none') ?>
 
-        <?php echo Html::submitButton(Yii::t('SpaceModule.views_admin_edit', 'Save'), array('class' => 'btn btn-primary', 'data-ui-loader' => '')); ?>
-
-        <?php echo \humhub\widgets\DataSaved::widget(); ?>
-
-        <div class="pull-right">
-            <?php if ($model->isSpaceOwner()) : ?>
-                <?php echo Html::a(Yii::t('SpaceModule.views_admin_edit', 'Delete'), $model->createUrl('delete'), array('class' => 'btn btn-danger', 'data-post' => 'POST')); ?>
-            <?php endif; ?>
+            <?= Button::warning(Yii::t('SpaceModule.manage', 'Unarchive'))
+                ->action('space.unarchive', $model->createUrl('/space/manage/default/unarchive'))
+                ->cssClass('unarchive')->style(($model->status == Space::STATUS_ARCHIVED) ? 'display:inline' : 'display:none') ?>
         </div>
 
         <?php ActiveForm::end(); ?>

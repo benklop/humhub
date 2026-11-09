@@ -19,7 +19,6 @@ namespace humhub\components\rendering;
  */
 interface Renderer
 {
-
     /**
      * Renders the given $viewable.
      *
@@ -35,5 +34,4 @@ interface Renderer
      * @param type $params
      */
     public function render(Viewable $viewable, $params = []);
-
 }

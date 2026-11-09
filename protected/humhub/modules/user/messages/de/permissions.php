@@ -1,5 +1,5 @@
 <?php
-return array (
-  'Allows access to your about page with personal information' => 'Zugriff zu Deiner Seite mit persönlichen Informationen erlauben',
-  'View your about page' => 'Deine Seite ansehen',
-);
+return [
+  'Can Access \'People\'' => 'Kann auf Mitgliederverzeichnis zugreifen',
+  'Can access \'People\' section.' => 'Kann auf die Übersicht der Mitglieder zugreifen',
+];

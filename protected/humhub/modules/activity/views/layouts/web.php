@@ -1,55 +1,46 @@
 <?php
 
-/**
- * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
- * @license https://www.humhub.com/licences
- */
-
 use humhub\modules\content\components\ContentContainerController;
 use humhub\modules\space\models\Space;
 use humhub\modules\space\widgets\Image;
 use humhub\widgets\TimeAgo;
+use yii\helpers\Url;
+
+/* @var $user \humhub\modules\user\models\User */
+/* @var $url string */
+/* @var $content \humhub\modules\content\models\Content */
+/* @var $contentAddon \humhub\modules\content\interfaces\ContentProvider */
+/* @var $contentContainer \humhub\modules\content\models\ContentContainer */
+/* @var $createdAt string */
+/* @var $message string */
 
 ?>
 
-<?php if ($clickable) : ?>
-<a href="<?= \yii\helpers\Url::to(['/activity/link', 'id' => $record->id])?>">
-<?php endif; ?>
-    <li class="activity-entry" data-stream-entry data-action-component="activity.ActivityStreamEntry" data-content-key="<?= $record->content->id ?>">
-        <div class="media">
-            <?php if ($originator !== null) : ?>
-                <!-- Show user image -->
-                <img class="media-object img-rounded pull-left" data-src="holder.js/32x32" alt="32x32"
-                     style="width: 32px; height: 32px;"
-                     src="<?= $originator->getProfileImage()->getUrl(); ?>">
-            <?php endif; ?>
+<?php if (!empty($url)) : ?>
+<a href="<?= Url::to($url) ?>">
+    <?php endif; ?>
+
+    <div class="d-flex activity-box-entry">
+        <div class="flex-shrink-0 me-3 pt-1 img-profile-space">
+            <?= $user->getProfileImage()->render(32, ['link' => false]) ?>
 
             <!-- Show space image, if you are outside from a space -->
-            <?php if (!Yii::$app->controller instanceof ContentContainerController) : ?>
-                <?php if ($record->content->container instanceof Space) : ?>
-                    <?=
-                    Image::widget([
-                        'space' => $record->content->container,
-                        'width' => 20,
-                        'htmlOptions' => [
-                            'class' => 'img-space pull-left',
-                        ]
-                    ]);
-                    ?>
-                <?php endif; ?>
-
+            <?php if (!Yii::$app->controller instanceof ContentContainerController && $contentContainer?->polymorphicRelation instanceof Space) : ?>
+                <?= Image::widget([
+                    'space' => $contentContainer->polymorphicRelation,
+                    'width' => 20,
+                    'htmlOptions' => ['class' => 'img-space'],
+                ]) ?>
             <?php endif; ?>
-
-            <div class="media-body text-break">
-
-                <!-- Show content -->
-                <?= $content; ?><br>
-
-                <!-- show time -->
-                <?= TimeAgo::widget(['timestamp' => $record->content->created_at]); ?>
-            </div>
         </div>
-    </li>
-<?php if ($clickable) : ?></a>
+
+        <div class="flex-grow-1 text-break">
+            <?= $message ?>
+            <br>
+            <?= TimeAgo::widget(['timestamp' => $createdAt]) ?>
+        </div>
+    </div>
+
+    <?php if (!empty($url)) : ?>
+</a>
 <?php endif; ?>

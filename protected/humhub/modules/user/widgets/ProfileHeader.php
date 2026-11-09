@@ -8,29 +8,29 @@
 
 namespace humhub\modules\user\widgets;
 
-use Yii;
+use humhub\modules\content\components\ContentContainerController;
+use humhub\modules\space\models\Membership;
 use humhub\modules\space\models\Space;
 use humhub\modules\user\models\User;
-use humhub\modules\space\models\Membership;
-use humhub\modules\friendship\models\Friendship;
-use humhub\modules\user\controllers\ImageController;
+use Yii;
+use yii\base\InvalidConfigException;
+use yii\base\Widget;
 
 /**
  * Displays the profile header of a user
- * 
+ *
  * @since 0.5
  * @author Luke
  */
-class ProfileHeader extends \yii\base\Widget
+class ProfileHeader extends Widget
 {
-
     /**
      * @var User
      */
     public $user;
 
     /**
-     * @var boolean is owner of the current profile 
+     * @var bool is owner of the current profile
      */
     protected $isProfileOwner = false;
 
@@ -42,8 +42,12 @@ class ProfileHeader extends \yii\base\Widget
         /**
          * Try to autodetect current user by controller
          */
-        if ($this->user === null) {
-            $this->user = $this->getController()->getUser();
+        if ($this->user === null && Yii::$app->controller instanceof ContentContainerController) {
+            $this->user = Yii::$app->controller->contentContainer;
+        }
+
+        if (!$this->user instanceof User) {
+            throw new InvalidConfigException('No user given for the profile header.');
         }
 
         if (!Yii::$app->user->isGuest && Yii::$app->user->id == $this->user->id) {
@@ -58,45 +62,29 @@ class ProfileHeader extends \yii\base\Widget
      */
     public function run()
     {
-        $friendshipsEnabled = Yii::$app->getModule('friendship')->getIsEnabled();
-
-        $countFriends = 0;
-        if ($friendshipsEnabled) {
-            $countFriends = Friendship::getFriendsQuery($this->user)->count();
-        }
-
-        $countFollowing = $this->user->getFollowingCount(User::className());
-
-        /* @var $imageController ImageController  */
-        $imageController = new ImageController('image-controller', null, ['user' => $this->user]);
-
-        return $this->render('profileHeader', array(
-                    'user' => $this->user,
-                    'isProfileOwner' => $this->isProfileOwner,
-                    'friendshipsEnabled' => $friendshipsEnabled,
-                    'followingEnabled' => !Yii::$app->getModule('user')->disableFollow,
-                    'countFriends' => $countFriends,
-                    'countFollowers' => $this->user->getFollowerCount(),
-                    'countFollowing' => $countFollowing,
-                    'countSpaces' => $this->getFollowingSpaceCount(),
-                    'allowModifyProfileImage' => $imageController->allowModifyProfileImage,
-                    'allowModifyProfileBanner' => $imageController->allowModifyProfileBanner,
-        ));
+        return $this->render('profileHeader', [
+            'user' => $this->user,
+            'isProfileOwner' => $this->isProfileOwner,
+            'friendshipsEnabled' => Yii::$app->getModule('friendship')->isFriendshipEnabled(),
+            'followingEnabled' => !Yii::$app->getModule('user')->disableFollow,
+            'countFriends' => -1,
+            'countFollowers' => -1,
+            'countFollowing' => -1,
+            'countSpaces' => -1,
+        ]);
     }
 
     /**
      * Returns the number of followed public space
-     * 
+     *
      * @return int the follow count
      */
     protected function getFollowingSpaceCount()
     {
         return Membership::getUserSpaceQuery($this->user)
-                        ->andWhere(['!=', 'space.visibility', Space::VISIBILITY_NONE])
-                        ->andWhere(['space.status' => Space::STATUS_ENABLED])
-                        ->count();
+            ->andWhere(['!=', 'space.visibility', Space::VISIBILITY_NONE])
+            ->andWhere(['space.status' => Space::STATUS_ENABLED])
+            ->count();
     }
 
 }
-
-?>

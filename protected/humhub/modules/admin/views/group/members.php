@@ -1,93 +1,128 @@
 <?php
 
-use yii\helpers\Url;
-use yii\helpers\Html;
-use yii\widgets\ActiveForm;
+use humhub\helpers\Html;
+use humhub\modules\admin\assets\AdminGroupAsset;
+use humhub\modules\admin\models\forms\AddGroupMemberForm;
+use humhub\modules\admin\models\UserSearch;
+use humhub\modules\user\grid\DisplayNameColumn;
+use humhub\modules\user\grid\ImageColumn;
+use humhub\modules\user\models\Group;
+use humhub\modules\user\models\User;
+use humhub\modules\user\widgets\UserPickerField;
+use humhub\widgets\bootstrap\Alert;
+use humhub\widgets\bootstrap\Button;
+use humhub\widgets\form\ActiveForm;
 use humhub\widgets\GridView;
+use yii\helpers\Url;
 
-\humhub\modules\admin\assets\AdminGroupAsset::register($this);
+/* @var $group Group */
+/* @var $addGroupMemberForm AddGroupMemberForm */
+/* @var $searchModel UserSearch */
+/* @var $dataProvider yii\data\ActiveDataProvider */
+/* @var $canManage bool */
+/* @var $canModifyMembers bool */
 
+AdminGroupAsset::register($this);
 ?>
 
 <?php $this->beginContent('@admin/views/group/_manageLayout.php', ['group' => $group]) ?>
 <div class="panel-body">
-    <?php $form = ActiveForm::begin(['action' => ['/admin/group/add-members']]); ?>
-    <div class="form-group">
-        <div class="input-group select2-humhub-append">
-            <?=
-            humhub\modules\user\widgets\UserPickerField::widget([
-                'model' => $addGroupMemberForm,
-                'attribute' => 'userGuids',
-                'url' => Url::to(['/admin/group/new-member-search', 'id' => $group->id]),
-                'placeholder' => Yii::t('AdminModule.views_group_manageGroupUser', 'Add new members...'),
-                'focus' => true,
-            ])
-            ?>
-            <?= Html::activeHiddenInput($addGroupMemberForm, 'groupId', ['value' => $group->id]) ?>
-            <span class="input-group-btn">
-                <button type="submit" class="btn btn-primary" style="height:40px;" data-ui-loader><i class="fa fa-plus"></i></button>
-            </span>
+    <?php if ($subGroupUsersCount = $group->getSubGroupUsersCount()) : ?>
+        <?= Alert::accent(Yii::t('AdminModule.user', 'This user group includes {count} additional members from the subgroup(s). To view the subgroups, check the Settings section.', [
+                '{count}' => '<strong>' . $subGroupUsersCount . '</strong>',
+            ]))->closeButton(false) ?>
+    <?php endif ?>
+
+    <div class="container gx-0 overflow-x-hidden">
+        <div class="row gy-2">
+            <?php if ($canModifyMembers) : ?>
+            <div class="col-lg-6">
+                <?php $form = ActiveForm::begin(['action' => ['/admin/group/add-members']]); ?>
+                <div class="select2-humhub-append input-group flex-nowrap">
+                    <?= UserPickerField::widget([
+                        'model' => $addGroupMemberForm,
+                        'attribute' => 'userGuids',
+                        'url' => Url::to(['/admin/group/new-member-search', 'id' => $group->id]),
+                        'placeholder' => Yii::t('AdminModule.user', 'Add new members...'),
+                        'focus' => true,
+                    ]) ?>
+                    <?= Html::activeHiddenInput($addGroupMemberForm, 'groupId', ['value' => $group->id]) ?>
+                    <?= Button::primary()
+                        ->submit()
+                        ->icon('add')
+                        ->options(['aria-label' => Yii::t('AdminModule.user', 'Add new members...')]) ?>
+                </div>
+                <?php ActiveForm::end(); ?>
+            </div>
+            <?php endif; ?>
+            <div class="<?= $canModifyMembers ? 'col-lg-6' : 'col-lg-12' ?>">
+                <?php $form = ActiveForm::begin(['method' => 'get']); ?>
+                <div class="input-group">
+                    <?= Html::activeTextInput($searchModel, 'freeText', ['class' => 'form-control', 'placeholder' => Yii::t('AdminModule.user', 'Search by name, email or id.')]); ?>
+                    <?= Button::light()
+                        ->submit()
+                        ->icon('search')
+                        ->options(['aria-label' => Yii::t('AdminModule.user', 'Search by name, email or id.')]) ?>
+                </div>
+                <?php ActiveForm::end(); ?>
+            </div>
         </div>
     </div>
-        <?php ActiveForm::end(); ?>
 
     <div class="table-responsive">
-        <?php
-            $actionUrl = Url::to(['edit-manager-role']);
-            echo GridView::widget([
+        <?= GridView::widget(
+            [
                 'dataProvider' => $dataProvider,
-                'filterModel' => $searchModel,
+                #'filterModel' => $searchModel,
+                'summary' => '',
                 'columns' => [
+                    ['class' => ImageColumn::class],
+                    ['class' => DisplayNameColumn::class],
                     [
-                        'attribute' => 'id',
-                        'options' => ['style' => 'width:40px;'],
-                        'format' => 'raw',
-                        'value' => function($data) {
-                            return $data->id;
-                        },
+                        'attribute' => 'created_at',
+                        'label' => Yii::t('AdminModule.user', 'Member since'),
+                        'format' => 'datetime',
+                        'options' => ['style' => 'width:160px; min-width:160px;'],
                     ],
-                    'username',
-                    'email',
-                    'profile.firstname',
-                    'profile.lastname',
                     [
                         'attribute' => 'is_manager',
-                        'visible' => $isManagerApprovalSetting,
-                        'label' => Yii::t('AdminModule.views_user_index', 'Group Manager'),
+                        'label' => Yii::t('AdminModule.user', 'Group Manager'),
                         'format' => 'raw',
-                        'value' => function ($data) use ($group, $actionUrl) {
-                            $isManager = $group->isManager($data);
-                            $yesSelected = ($isManager) ? 'selected' : '';
-                            $noSelected = ($isManager) ? '' : 'selected';
-                            $result = '<select class="editableCell form-control" data-action-change="admin.group.setManagerRole" data-action-url="'.$actionUrl.'" data-userid="' . $data->id . '"  data-groupid="' . $group->id . '">';
-                            $result .= '<option value="0" ' . $noSelected . '>' . Yii::t('AdminModule.views_group_manageGroupUser', 'No') . '</option>';
-                            $result .= '<option value="1" ' . $yesSelected . '>' . Yii::t('AdminModule.views_group_manageGroupUser', 'Yes') . '</option>';
-                            return $result;
-                        }
+                        'value' => fn(User $user) => Html::dropDownList('role', $group->isManager($user), [
+                            Yii::t('AdminModule.user', 'No'),
+                            Yii::t('AdminModule.user', 'Yes'),
+                        ], [
+                            'data-action-change' => 'admin.group.setManagerRole',
+                            'data-action-url' => Url::to(['edit-manager-role']),
+                            'data-userid' => $user->id,
+                            'data-groupid' => $group->id,
+                            'disabled' => !$canManage,
+                        ]),
                     ],
                     [
-                        'header' => Yii::t('AdminModule.views_user_index', 'Actions'),
                         'class' => 'yii\grid\ActionColumn',
-                        'options' => ['style' => 'width:80px; min-width:80px;'],
+                        'visible' => $canModifyMembers,
+                        'options' => ['style' => 'width:40px; min-width:40px;'],
+                        'template' => '{delete}',
                         'buttons' => [
-                            'view' => function($url, $model) {
-                                return false;
-                            },
-                            'update' => function($url, $model) use ($group) {
-                                return false;
-                            },
-                            'delete' => function($url, $model) use ($group) {
-                                return Html::a('<i class="fa fa-times"></i>', '#', [
-                                            'data-action-click' => 'admin.group.removeMember',
-                                            'data-action-url' => Url::to(['remove-group-user', 'id' => $group->id, 'userId' => $model->id]),
-                                            'title' => Yii::t('AdminModule.views_group_manageGroupUser', 'Remove from group'),
-                                            'class' => 'btn btn-danger btn-xs tt']);
-                            }
+                            'delete' => fn($url, $model) => $model->getGroups()->count() > 1
+                                ? Button::danger()
+                                    ->tooltip(Yii::t('AdminModule.user', 'Remove from group'))
+                                    ->action('admin.group.removeMember', Url::to(['remove-group-user', 'id' => $group->id, 'userId' => $model->id]))
+                                    ->icon('remove')
+                                    ->sm()
+                                    ->confirm()
+                                : Button::danger()
+                                    ->tooltip(Yii::t('AdminModule.user', 'The user cannot be removed from this Group, as users are required to be assigned to at least one Group.'))
+                                    ->icon('remove')
+                                    ->options(['disabled' => true])
+                                    ->sm()
+                                    ->loader(false),
                         ],
                     ],
                 ],
             ]
-        );?>
+        ) ?>
     </div>
 </div>
 <?php $this->endContent(); ?>

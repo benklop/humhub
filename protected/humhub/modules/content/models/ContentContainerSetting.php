@@ -8,19 +8,27 @@
 
 namespace humhub\modules\content\models;
 
+use humhub\components\SettingActiveRecord;
+use yii\db\ActiveQuery;
+
 /**
  * This is the model class for table "contentcontainer_setting".
  *
- * @property integer $id
+ * @property int $id
  * @property string $module_id
- * @property integer $contentcontainer_id
+ * @property int $contentcontainer_id
  * @property string $name
  * @property string $value
  * @property ContentContainer $contentcontainer
  * @since 1.1
  */
-class ContentContainerSetting extends \yii\db\ActiveRecord
+class ContentContainerSetting extends SettingActiveRecord
 {
+    /** @inheritdoc */
+    public const CACHE_KEY_FORMAT = 'settings-%s-%d';
+
+    /** @inheritdoc */
+    public const CACHE_KEY_FIELDS = ['module_id', 'contentcontainer_id'];
 
     /**
      * @inheritdoc
@@ -41,7 +49,7 @@ class ContentContainerSetting extends \yii\db\ActiveRecord
             [['value'], 'string'],
             [['module_id', 'name'], 'string', 'max' => 50],
             [['module_id', 'contentcontainer_id', 'name'], 'unique', 'targetAttribute' => ['module_id', 'contentcontainer_id', 'name'], 'message' => 'The combination of Module ID, Contentcontainer ID and Name has already been taken.'],
-            [['contentcontainer_id'], 'exist', 'skipOnError' => true, 'targetClass' => ContentContainer::className(), 'targetAttribute' => ['contentcontainer_id' => 'id']],
+            [['contentcontainer_id'], 'exist', 'skipOnError' => true, 'targetClass' => ContentContainer::class, 'targetAttribute' => ['contentcontainer_id' => 'id']],
         ];
     }
 
@@ -60,11 +68,11 @@ class ContentContainerSetting extends \yii\db\ActiveRecord
     }
 
     /**
-     * @return \yii\db\ActiveQuery
+     * @return ActiveQuery
      */
     public function getContentcontainer()
     {
-        return $this->hasOne(ContentContainer::className(), ['id' => 'contentcontainer_id']);
+        return $this->hasOne(ContentContainer::class, ['id' => 'contentcontainer_id']);
     }
 
 }

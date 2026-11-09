@@ -1,81 +1,71 @@
 <?php
 
-use yii\helpers\Html;
-use humhub\modules\space\models\Space;
+use humhub\helpers\Html;
+use humhub\modules\admin\grid\SpaceActionColumn;
+use humhub\modules\admin\grid\SpaceImageColumn;
+use humhub\modules\admin\grid\SpaceTitleColumn;
+use humhub\modules\admin\models\SpaceSearch;
 use humhub\modules\admin\widgets\SpaceGridView;
+use humhub\modules\space\permissions\CreatePrivateSpace;
+use humhub\modules\space\permissions\CreatePublicSpace;
+use humhub\modules\user\grid\DisplayNameColumn;
+use humhub\modules\user\grid\ImageColumn;
+use humhub\widgets\form\ActiveForm;
+use humhub\widgets\modal\ModalButton;
+use yii\helpers\Url;
+
+/* @var $searchModel SpaceSearch */
 ?>
 
-<h4><?= Yii::t('AdminModule.views_space_index', 'Overview'); ?></h4>
-<div class="help-block">
-    <?= Yii::t('AdminModule.views_space_index', 'This overview contains a list of each space with actions to view, edit and delete spaces.'); ?>
+<?php if (Yii::$app->user->can([CreatePublicSpace::class, CreatePrivateSpace::class])) : ?>
+    <?= ModalButton::success(Yii::t('AdminModule.space', 'Add new space'))->load(['/space/create'])
+        ->icon('add')->right()->sm() ?>
+<?php endif; ?>
+
+<h4><?= Yii::t('AdminModule.space', 'Overview') ?></h4>
+<div class="text-body-secondary">
+    <?= Yii::t('AdminModule.space', 'This overview contains a list of each space with actions to view, edit and delete spaces.'); ?>
 </div>
 
+<br/>
+<?php $form = ActiveForm::begin(['method' => 'get', 'action' => Url::to(['/admin/space'])]); ?>
+
+<div class="container gx-0 overflow-x-hidden">
+    <div class="row gy-2">
+        <div class="col-lg-8">
+            <div class="input-group">
+                <?= Html::activeTextInput($searchModel, 'freeText', ['class' => 'form-control', 'placeholder' => Yii::t('AdminModule.space', 'Search by name, description, id or owner.')]); ?>
+                <button class="btn btn-light" type="submit"><i class="fa fa-search"></i></button>
+            </div>
+        </div>
+        <div class="col-lg-4 spacesearch-visibilities">
+            <?= Html::activeDropDownList($searchModel, 'visibility', SpaceSearch::getVisibilityAttributes(), ['class' => 'form-control', 'data-action-change' => 'ui.form.submit']); ?>
+        </div>
+    </div>
+</div>
+<?php ActiveForm::end(); ?>
+
+
 <div class="table-responsive">
-    <?= Html::a('<i class="fa fa-plus" aria-hidden="true"></i>&nbsp;&nbsp;' . Yii::t('AdminModule.space', 'Add new space'), ['/space/create'], ['class' => 'btn btn-success pull-right', 'data-target' => '#globalModal']); ?>
-    <?php
-    $visibilities = [
-        Space::VISIBILITY_NONE => Yii::t('SpaceModule.base', 'Private (Invisible)'),
-        Space::VISIBILITY_REGISTERED_ONLY => Yii::t('SpaceModule.base', 'Public (Visible)'),
-        Space::VISIBILITY_ALL => 'All',
-    ];
-
-    $joinPolicies = [
-        Space::JOIN_POLICY_NONE => Yii::t('SpaceModule.base', 'Only by invite'),
-        Space::JOIN_POLICY_APPLICATION => Yii::t('SpaceModule.base', 'Invite and request'),
-        Space::JOIN_POLICY_FREE => Yii::t('SpaceModule.base', 'Everyone can enter'),
-    ];
-
-    echo SpaceGridView::widget([
+    <?=
+    SpaceGridView::widget([
         'dataProvider' => $dataProvider,
-        'filterModel' => $searchModel,
+        'summary' => '',
         'columns' => [
+            ['class' => SpaceImageColumn::class],
+            ['class' => SpaceTitleColumn::class],
             [
-                'attribute' => 'id',
-                'options' => ['width' => '40px'],
-                'format' => 'raw',
-                'value' => function($data) {
-                    return $data->id;
-                },
+                'attribute' => 'memberCount',
+                'label' => Yii::t('SpaceModule.base', 'Members')
             ],
-            'name',
+            ['class' => ImageColumn::class, 'userAttribute' => 'ownerUser'],
             [
-                'attribute' => 'visibility',
-                'filter' => \yii\helpers\Html::activeDropDownList($searchModel, 'visibility', array_merge(['' => ''], $visibilities)),
-                'options' => ['width' => '40px'],
-                'format' => 'raw',
-                'value' => function($data) use ($visibilities) {
-                    if (isset($visibilities[$data->visibility]))
-                        return $visibilities[$data->visibility];
-                        return Html::encode($data->visibility);
-                    },
+                'attribute' => 'ownerUser.profile.lastname',
+                'class' => DisplayNameColumn::class,
+                'userAttribute' => 'ownerUser',
+                'label' => Yii::t('SpaceModule.base', 'Owner')
             ],
-            [
-                'attribute' => 'join_policy',
-                'options' => ['width' => '40px'],
-                'filter' => \yii\helpers\Html::activeDropDownList($searchModel, 'join_policy', array_merge(['' => ''], $joinPolicies)),
-                'format' => 'raw',
-                'value' => function($data) use ($joinPolicies) {
-                    if (isset($joinPolicies[$data->join_policy]))
-                        return $joinPolicies[$data->join_policy];
-                        return Html::encode($data->join_policy);
-                    },
-            ],
-            [
-                'header' => Yii::t('AdminModule.views_space_index', 'Actions'),
-                'class' => 'yii\grid\ActionColumn',
-                'options' => ['width' => '80px'],
-                'buttons' => [
-                    'view' => function($url, $model) {
-                        return Html::a('<i class="fa fa-eye"></i>', $model->getUrl(), ['class' => 'btn btn-primary btn-xs tt']);
-                    },
-                    'update' => function($url, $model) {
-                        return Html::a('<i class="fa fa-pencil"></i>', $model->createUrl('/space/manage'), ['class' => 'btn btn-primary btn-xs tt']);
-                    },
-                    'delete' => function($url, $model) {
-                        return Html::a('<i class="fa fa-times"></i>', $model->createUrl('/space/manage/default/delete'), ['class' => 'btn btn-danger btn-xs tt']);
-                    }
-                ],
-            ],
+            ['class' => SpaceActionColumn::class],
         ],
     ]);
     ?>

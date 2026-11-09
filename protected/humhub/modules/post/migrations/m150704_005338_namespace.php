@@ -8,7 +8,7 @@ class m150704_005338_namespace extends Migration
 {
     public function up()
     {
-        $this->renameClass('Post', Post::className());
+        $this->renameClass('Post', Post::class);
     }
 
     public function down()
@@ -17,13 +17,13 @@ class m150704_005338_namespace extends Migration
 
         return false;
     }
-    
+
     /*
     // Use safeUp/safeDown to run migration code within a transaction
     public function safeUp()
     {
     }
-    
+
     public function safeDown()
     {
     }

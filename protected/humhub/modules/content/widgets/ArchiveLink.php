@@ -8,8 +8,10 @@
 
 namespace humhub\modules\content\widgets;
 
+use humhub\modules\content\components\ContentActiveRecord;
 use Yii;
 use humhub\modules\content\components\ContentContainerController;
+use yii\base\Widget;
 
 /**
  * PinLink for Wall Entries
@@ -19,11 +21,10 @@ use humhub\modules\content\components\ContentContainerController;
  *
  * @since 0.5
  */
-class ArchiveLink extends \yii\base\Widget
+class ArchiveLink extends Widget
 {
-
     /**
-     * @var \humhub\modules\content\components\ContentActiveRecord
+     * @var ContentActiveRecord
      */
     public $content;
 
@@ -32,16 +33,14 @@ class ArchiveLink extends \yii\base\Widget
      */
     public function run()
     {
-        if (!Yii::$app->controller instanceof ContentContainerController || !$this->content->content->canArchive() || $this->content->content->getContainer()->isArchived()) {
-            return;
+        if (!$this->content->content->canArchive()) {
+            return '';
         }
 
-        return $this->render('archiveLink', array(
-                    'object' => $this->content,
-                    'id' => $this->content->content->id,
-        ));
+        return $this->render('archiveLink', [
+            'object' => $this->content,
+            'id' => $this->content->content->id,
+        ]);
     }
 
 }
-
-?>

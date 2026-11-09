@@ -1,16 +1,25 @@
 <?php
 
-/**
- * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
- * @license https://www.humhub.com/licences
- */
- 
-use yii\helpers\Html;
-?>
+/* @var $user \humhub\modules\user\models\User */
+/* @var $url string */
+/* @var $content \humhub\modules\content\models\Content */
+/* @var $contentAddon \humhub\modules\content\interfaces\ContentProvider */
+/* @var $contentContainer \humhub\modules\content\models\ContentContainer */
+/* @var $createdAt string */
 
+/* @var $message string */
+
+use humhub\modules\space\models\Space;
+
+?>
 
 ---
 
-<?= $content; ?> <?php if (isset($record->content->space) && $record->content->space !== null): ?>(<?= strip_tags(Yii::t('ActivityModule.views_activityLayoutMail', 'via')); ?> <?= Html::encode($record->content->space->name); ?>)
-<?php endif; ?><?php if ($url != "") : ?><?= strip_tags(Yii::t('ActivityModule.views_activityLayoutMail', 'See online:')); ?> <?= urldecode($url); ?><?php endif; ?>
+<?= $message ?>
+<?php if ($contentContainer?->polymorphicRelation instanceof Space) : ?>
+    (<?= Yii::t('ActivityModule.base', 'via') ?> <?= $contentContainer->polymorphicRelation->displayName ?>)
+<?php endif; ?>
+
+<?php if ($url != '') : ?>
+    <?= Yii::t('ActivityModule.base', 'See online:') ?> <?= urldecode((string) $url) ?>
+<?php endif; ?>

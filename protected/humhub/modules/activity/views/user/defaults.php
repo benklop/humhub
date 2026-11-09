@@ -6,18 +6,22 @@
  * @license https://www.humhub.com/licences
  */
 
-/* @var $model \humhub\modules\notification\models\forms\NotificationSettings */
+use humhub\modules\activity\models\MailSummaryForm;
+
+/* @var $model MailSummaryForm */
+
 ?>
 
 <div class="panel-heading">
-    <?= Yii::t('ActivityModule.base', '<strong>E-Mail</strong> Summaries'); ?>
+    <?= Yii::t('ActivityModule.base', '<strong>E-Mail</strong> Summaries') ?>
 </div>
 <div class="panel-body">
-    <div class="help-block">
-        <?= Yii::t('ActivityModule.base', 'E-Mail summaries are sent to inform you about recent activities in the network.'); ?><br />
-        <?= Yii::t('ActivityModule.base', 'On this page you can configure the contents and the interval of these e-mail updates.'); ?><br />
+    <div class="text-body-secondary">
+        <?= Yii::t('ActivityModule.base', 'E-Mail summaries are sent to inform you about recent activities in the network.') ?>
+        <br/>
+        <?= Yii::t('ActivityModule.base', 'On this page you can configure the contents and the interval of these e-mail updates.') ?>
+        <br/>
     </div>
-    
-    <?= $this->render('@activity/views/mailSummaryForm', ['model' => $model]); ?>
-</div>
 
+    <?= $this->render('@activity/views/mailSummaryForm', ['model' => $model]) ?>
+</div>

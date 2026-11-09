@@ -8,7 +8,7 @@
 
 namespace humhub\assets;
 
-use yii\web\AssetBundle;
+use humhub\components\assets\AssetBundle;
 
 /**
  * jQery Blueimp File Upload
@@ -17,25 +17,34 @@ use yii\web\AssetBundle;
  */
 class BlueimpFileUploadAsset extends AssetBundle
 {
-
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/blueimp-file-upload';
+    public $sourcePath = '@npm/blueimp-file-upload/js';
 
     /**
      * @inheritdoc
      */
     public $js = [
-        'js/jquery.fileupload.js',
-        'js/jquery.iframe-transport.js',
+        'jquery.fileupload.js',
+        'jquery.iframe-transport.js',
     ];
 
     /**
      * @inheritdoc
      */
     public $depends = [
-        'humhub\assets\JqueryWidgetAsset',
+        JqueryWidgetAsset::class,
+    ];
+
+    /**
+     * @inheritdoc
+     */
+    public $publishOptions = [
+        'only' => [
+            'jquery.fileupload.js',
+            'jquery.iframe-transport.js',
+        ],
     ];
 
 }

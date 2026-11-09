@@ -12,8 +12,13 @@ humhub.module('notification', function (module, require, $) {
     var client = require('client');
     var view = require('ui.view');
     var user = require('user');
+    var i18n = require('i18n');
+
+    var notificationIds = [];
+    var notificationGroups = [];
 
     module.initOnPjaxLoad = true;
+    module.requiredI18nCategories = ['NotificationModule.base'];
 
     var NotificationDropDown = function (node, options) {
         Widget.call(this, node, options);
@@ -21,26 +26,73 @@ humhub.module('notification', function (module, require, $) {
 
     object.inherits(NotificationDropDown, Widget);
 
+
+    var OverviewWidget = function (node, options) {
+        Widget.call(this, node, options);
+    };
+
+    object.inherits(OverviewWidget, Widget);
+
+    OverviewWidget.prototype.init = function () {
+        var that = this;
+        event.on('humhub:notification:filterApplied', function (evt, form) {
+            evt.preventDefault();
+            that.reload({data: $(form).serializeArray()});
+        });
+        this.on('afterReload', function () {
+            updateOverviewMarkSeenButton();
+        });
+    };
+
+    var updateOverviewMarkSeenButton = function () {
+        $('#notification_overview_markseen').toggle($('#notification_overview_list .new').length > 0);
+    };
+
     NotificationDropDown.prototype.init = function (update) {
-        
         this.isOpen = false;
         this.lastEntryLoaded = false;
         this.lastEntryId = 0;
         this.originalTitle = document.title;
         this.initDropdown();
         this.handleResult(update);
-        //this.sendDesktopNotifications(update);
 
         var that = this;
         event.on('humhub:modules:notification:live:NewNotification', function (evt, events, update) {
-            var count = (that.$.data('notification-count')) ? parseInt(that.$.data('notification-count')) + events.length : events.length;
+            var filteredEvents = that.filterEvents(events);
+            var count = (that.$.data('notification-count')) ? parseInt(that.$.data('notification-count')) + filteredEvents.length : filteredEvents.length;
             that.updateCount(count);
-            that.sendDesktopNotifications(events, update.lastSessionTime);
+        });
+
+        // e.g. Mail module can fire this to `updateTitle`.
+        event.on('humhub:modules:notification:UpdateTitleNotificationCount', function (evt, events, update) {
+            var count = (that.$.data('notification-count')) ? parseInt(that.$.data('notification-count')) : 0;
+            updateTitle(count);
         });
     };
 
+    NotificationDropDown.prototype.filterEvents = function (events) {
+        if (!events || !events.length) {
+            return;
+        }
+
+        var result = [];
+        events.forEach(function (event) {
+            if (notificationIds.indexOf(event.data.notificationId) < 0) {
+                var groupId = event.data.notificationGroup;
+
+                // We filter out group ids which were already handled
+                if (!groupId || !groupId.length || notificationGroups.indexOf(groupId) < 0) {
+                    result.push(event);
+                    notificationGroups.push(groupId);
+                }
+            }
+        });
+
+        return result;
+    };
+
     NotificationDropDown.prototype.initDropdown = function () {
-        this.$entryList = this.$.find('ul.media-list');
+        this.$entryList = this.$.find('div.hh-list');
         this.$dropdown = this.$.find('#dropdown-notifications');
 
         var that = this;
@@ -58,13 +110,13 @@ humhub.module('notification', function (module, require, $) {
         });
     };
 
-    NotificationDropDown.prototype.toggle = function (evt) {
+    NotificationDropDown.prototype.toggle = function () {
         // Always reset the loading settings so we reload the whole dropdown.
         this.lastEntryLoaded = false;
         this.lastEntryId = 0;
 
-        // Since the handler will be called before the bootstrap trigger it's an open event if the dropdown is not visible yet
-        this.isOpen = !this.$dropdown.is(':visible');
+        // Since the handler will be called before the bootstrap trigger, isOpen is true if the dropdown is shown
+        this.isOpen = this.$dropdown.hasClass('show');
         if (this.isOpen) {
             this.$entryList.empty().hide();
             this.loadEntries();
@@ -79,50 +131,66 @@ humhub.module('notification', function (module, require, $) {
         var that = this;
         this.loader();
         client.get(module.config.loadEntriesUrl, {data: {from: this.lastEntryId}})
-                .then($.proxy(this.handleResult, this))
-                .catch(_errorHandler)
-                .finally(function () {
-                    that.loader(false);
-                    that.loading = false;
-                });
+            .then($.proxy(this.handleResult, this))
+            .catch(_errorHandler)
+            .finally(function () {
+                that.loader(false);
+                that.loading = false;
+            });
     };
 
     NotificationDropDown.prototype.handleResult = function (response) {
         if (!response.counter) {
-            this.$entryList.append(string.template(module.templates.placeholder, {'text': module.text('placeholder')}));
+            this.$entryList.append(string.template(module.templates.info, {'text': i18n.t('NotificationModule.base', 'There are no notifications yet.')}));
         } else {
             this.lastEntryId = response.lastEntryId;
             this.$entryList.append(response.output);
+
             $('span.time').timeago();
         }
 
+        this.parseNotifications();
         this.updateCount(parseInt(response.newNotifications));
         this.lastEntryLoaded = (response.counter < 6);
         this.$entryList.fadeIn('fast');
     };
 
+    NotificationDropDown.prototype.parseNotifications = function () {
+        this.$entryList.find('[data-notification-id]').each(function () {
+            var $this = $(this);
+            var id = $this.data('notificationId');
+
+            if (id && notificationIds.indexOf(id) < 0) {
+                notificationIds.push(id);
+            }
+
+            var groupId = $this.data('notificationGroup');
+
+            if (notificationGroups.indexOf(groupId) < 0) {
+                notificationGroups.push($this.data('notificationGroup'));
+            }
+        });
+    };
+
     NotificationDropDown.prototype.updateCount = function ($count) {
         if (this.$.data('notification-count') === $count) {
-            if(!$count) {
-                $('#badge-notifications').hide();
+            if (!$count) {
+                $('#badge-notifications').addClass('d-none');
             }
             return;
         }
-
-        $('#badge-notifications').hide();
 
         event.trigger('humhub:notification:updateCount', [$count]);
 
         if (!$count) {
             updateTitle(false);
             $('#badge-notifications').html('0');
-            $('#mark-seen-link').hide();
+            $('#badge-notifications, #mark-seen-link').addClass('d-none');
             $('#icon-notifications .fa').removeClass("animated swing");
         } else {
             updateTitle($count);
             $('#badge-notifications').html($count);
-            $('#mark-seen-link').show();
-            $('#badge-notifications').fadeIn('fast');
+            $('#badge-notifications, #mark-seen-link').removeClass('d-none');
 
             // Clone icon to retrigger animation
             var $icon = $('#icon-notifications .fa');
@@ -134,46 +202,9 @@ humhub.module('notification', function (module, require, $) {
         this.$.data('notification-count', $count);
     };
 
-    NotificationDropDown.prototype.sendDesktopNotifications = function (response, lastSessionTime) {
-        if (!response) {
-            return;
-        }
-
-        if (!module.config.sendDesktopNotifications) {
-            return;
-        }
-
-        if (response.text) { // Single Notification
-            module.sendDesktopNotifiaction(response.text);
-        } else if (response.notifications) { // Multiple Notifications
-            var $notifications = response.notifications;
-            for (var i = 0; i < $notifications.length; i++) {
-                module.sendDesktopNotifiaction($notifications[i]);
-            }
-        } else if (object.isArray(response)) { // Live events
-            $.each(response, function (i, liveEvent) {
-                if (lastSessionTime && lastSessionTime > liveEvent.data.ts) {
-                    return; // continue
-                }
-
-                if (liveEvent.data && liveEvent.data.text) {
-                    module.sendDesktopNotifiaction(liveEvent.data.text);
-                }
-            });
-        }
-
-    };
-
-    var getNotificationCount = function() {
+    var getNotificationCount = function () {
         var widget = NotificationDropDown.instance('#notification_widget');
         return widget.$.data('notification-count');
-    };
-
-    var sendDesktopNotifiaction = function (body, icon) {
-        icon = icon || module.config.icon;
-        if (body && body.length) {
-            notify.createNotification("Notification", {body: body, icon: icon});
-        }
     };
 
     var _errorHandler = function (e) {
@@ -192,9 +223,11 @@ humhub.module('notification', function (module, require, $) {
     NotificationDropDown.prototype.markAsSeen = function (evt) {
         var that = this;
         return client.post(evt).then(function (response) {
-            $('#badge-notifications').hide();
-            $('#mark-seen-link').hide();
+            $('#badge-notifications').addClass('d-none');
+            $('#mark-seen-link').addClass('d-none');
             that.updateCount(0);
+            notificationIds = [];
+            notificationGroups = [];
         }).catch(function (e) {
             module.log.error(e, true);
         });
@@ -202,42 +235,59 @@ humhub.module('notification', function (module, require, $) {
 
     /**
      * Global action handler (used in overview page).
-     * 
+     *
      * @param {type} evt
      * @returns {undefined}
      */
     var markAsSeen = function (evt) {
-        var widget = NotificationDropDown.instance('#notification_widget');
-        widget.markAsSeen(evt).then(function () {
-            location.reload();
-        });
+        var $filterForm = $('#notification_overview_filter');
+        if (!$filterForm.length) {
+            var widget = NotificationDropDown.instance('#notification_widget');
+            widget.markAsSeen(evt).then(function () {
+                location.reload();
+            });
+            return;
+        }
+
+        // Overview page: mark only the currently filtered notifications as seen
+        client.post(evt, {data: $filterForm.serializeArray()}).then(function (response) {
+            NotificationDropDown.instance('#notification_widget').updateCount(parseInt(response.unseenCount));
+            event.trigger('humhub:notification:filterApplied', $filterForm);
+        }).catch(_errorHandler);
     };
 
     var updateTitle = function ($count) {
+        // Workaround to include Mail Notification into Title
+        // Mail Module triggers also `humhub:modules:notification:UpdateTitleNotificationCount` on New Messages
+        if (humhub.modules.mail && humhub.modules.mail.notification && humhub.modules.mail.notification.getNewMessageCount) {
+            $count += humhub.modules.mail.notification.getNewMessageCount() * 1;
+        }
+
         if ($count) {
             document.title = '(' + $count + ') ' + view.getState().title;
-        } else if ($count === false) {
+        } else if ($count === false || $count === 0) {
             document.title = view.getState().title;
         }
     };
 
     module.templates = {
-        placeholder: '<li class="placeholder">{text}</li>'
+        info: '<div class="info">{text}</div>'
     };
 
     var init = function ($pjax) {
         if (user.isGuest()) {
             return;
         }
-        
+
         if (!$('#notification_widget').length) {
             return;
         }
-        
+
         updateTitle($('#notification_widget').data('notification-count'));
         initOverviewPage();
-        if (!$pjax) {
-            $("#dropdown-notifications ul.media-list").niceScroll({
+
+        if (!$pjax && view.isLarge()) {
+            $("#dropdown-notifications div.hh-list").niceScroll({
                 cursorwidth: "7",
                 cursorborder: "",
                 cursorcolor: "#555",
@@ -246,28 +296,41 @@ humhub.module('notification', function (module, require, $) {
                 railpadding: {top: 0, right: 3, left: 0, bottom: 0}
             });
 
-           $("#dropdown-notifications ul.media-list").on('touchmove', function(evt) {
+            $("#dropdown-notifications div.hh-list").on('touchmove', function (evt) {
                 evt.preventDefault();
-           });
+            });
         }
 
         module.menu = NotificationDropDown.instance('#notification_widget');
     };
 
+    var handleFilterChanges = function () {
+        const filterForm = $('#notification_overview_filter');
+        filterForm.on('click', '.field-filterform-categoryfilter input[type=checkbox]', function (evt) {
+            const allSelected = filterForm.find('.field-filterform-categoryfilter input[type=checkbox]:not(:checked)').length === 0;
+            filterForm.find('.field-filterform-allfilter input[type=checkbox]').prop('checked', allSelected);
+            event.trigger('humhub:notification:filterApplied', filterForm);
+        }).on('click', '.field-filterform-allfilter input[type=checkbox]', function () {
+            filterForm.find('#filterform-categoryfilter input[type=checkbox]').prop('checked', $(this).prop('checked'));
+            event.trigger('humhub:notification:filterApplied', filterForm);
+        }).on('change', 'input[name="FilterForm[seenFilter]"]', function () {
+            event.trigger('humhub:notification:filterApplied', filterForm);
+        });
+    };
+
     var initOverviewPage = function () {
+        handleFilterChanges();
         if ($('#notification_overview_list').length) {
-            if (!$('#notification_overview_list li.new').length) {
-                $('#notification_overview_markseen').hide();
-            }
+            OverviewWidget.instance('#notification_overview_list');
+            updateOverviewMarkSeenButton();
         }
     };
 
     module.export({
         init: init,
         markAsSeen: markAsSeen,
-        sendDesktopNotifiaction: sendDesktopNotifiaction,
         getNotificationCount: getNotificationCount,
-        NotificationDropDown: NotificationDropDown
+        NotificationDropDown: NotificationDropDown,
+        OverviewWidget: OverviewWidget
     });
 });
-

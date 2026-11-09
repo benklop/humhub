@@ -2,6 +2,9 @@
 
 namespace humhub\modules\content\widgets;
 
+use humhub\modules\content\components\ContentActiveRecord;
+use humhub\widgets\BaseStack;
+
 /**
  * WallEntryLinksWidget is an instance of StackWidget.
  *
@@ -11,16 +14,21 @@ namespace humhub\modules\content\widgets;
  * @package humhub.modules_core.wall.widgets
  * @since 0.5
  */
-class WallEntryLinks extends \humhub\widgets\BaseStack
+class WallEntryLinks extends BaseStack
 {
-
     /**
-     * Object derived from HActiveRecordContent
-     *
-     * @var type
+     * @var ContentActiveRecord
      */
     public $object = null;
 
-}
+    /**
+     * @inheritdoc
+     */
+    public $seperator = ' &middot; ';
 
-?>
+    /**
+     * @inheritdoc
+     */
+    public $template = '<div class="wall-entry-controls wall-entry-links">{content}</div>';
+
+}

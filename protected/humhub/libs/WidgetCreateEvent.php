@@ -18,7 +18,6 @@ use yii\base\Event;
  */
 class WidgetCreateEvent extends Event
 {
-
     /**
      * @var array Reference to the config of widget create
      */
@@ -32,5 +31,4 @@ class WidgetCreateEvent extends Event
         $this->config = &$attributes;
         $this->init();
     }
-
 }

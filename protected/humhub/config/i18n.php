@@ -11,7 +11,57 @@ return [
     'sourcePath' => __DIR__ . DIRECTORY_SEPARATOR . '..',
     // array, required, list of language codes that the extracted messages
     // should be translated to. For example, ['zh-CN', 'de'].
-    'languages' => array('de', 'fr', 'nl', 'pt', 'pl', 'pt_br', 'es', 'it', 'tr', 'ru', 'th', 'uk', 'el', 'hu', 'ja', 'nb_no', 'zh_cn', 'ca', 'an', 'cs', 'vi', 'sv', 'da', 'uz', 'fa_ir', 'bg', 'sk', 'zh_tw', 'ro', 'ar', 'id', 'ko', 'lt', 'hr', 'ht', 'lv'),
+    'languages' => [
+        'am',
+        'an',
+        'ar',
+        'bg',
+        'br',
+        'ca',
+        'cs',
+        'cy',
+        'da',
+        'de',
+        'el',
+        'es',
+        'es-419',
+        'et',
+        'eu',
+        'fa-IR',
+        'fi',
+        'fr',
+        'he',
+        'hr',
+        'ht',
+        'hu',
+        'id',
+        'it',
+        'ja',
+        'ko',
+        'lt',
+        'lv',
+        'nb-NO',
+        'nl',
+        'nn-NO',
+        'pl',
+        'pt',
+        'pt-BR',
+        'ro',
+        'ru',
+        'sk',
+        'sl',
+        'sq',
+        'sr',
+        'sv',
+        'sw',
+        'th',
+        'tr',
+        'uk',
+        'uz',
+        'vi',
+        'zh-CN',
+        'zh-TW',
+    ],
     // string, the name of the function for translating messages.
     // Defaults to 'Yii::t'. This is used as a mark to find the messages to be
     // translated. You may use a string for single function name or an array for
@@ -27,7 +77,7 @@ return [
     // array, list of patterns that specify which files (not directories) should be processed.
     // If empty or not set, all files will be processed.
     // Please refer to "except" for details about the patterns.
-    'only' => ['*.php'],
+    'only' => ['*.php', '*.js', '*.jsx'],
     // array, list of patterns that specify which files/directories should NOT be processed.
     // If empty or not set, all files/directories will be processed.
     // A path matches a pattern if it contains the pattern string at its end. For example,
@@ -46,6 +96,8 @@ return [
         '.hgkeep',
         '/messages',
         'messages',
+        '/vendor',
+        '/protected/vendor',
     ],
     // 'php' output format is for saving messages to php files.
     'format' => 'php',
@@ -53,32 +105,32 @@ return [
     'messagePath' => realpath(__DIR__ . '/../messages'),
     // boolean, whether the message file should be overwritten with the merged messages
     'overwrite' => true,
-        /*
-          // Message categories to ignore
-          'ignoreCategories' => [
-          'yii',
-          ],
-         */
+    'phpFileHeader' => '',
+    'phpDocBlock' => '',
+    // Message categories to ignore
+    'ignoreCategories' => [
+        'yii',
+    ],
 
-        /*
-          // 'db' output format is for saving messages to database.
-          'format' => 'db',
-          // Connection component to use. Optional.
-          'db' => 'db',
-          // Custom source message table. Optional.
-          // 'sourceMessageTable' => '{{%source_message}}',
-          // Custom name for translation message table. Optional.
-          // 'messageTable' => '{{%message}}',
-         */
+    /*
+      // 'db' output format is for saving messages to database.
+      'format' => 'db',
+      // Connection component to use. Optional.
+      'db' => 'db',
+      // Custom source message table. Optional.
+      // 'sourceMessageTable' => '{{%source_message}}',
+      // Custom name for translation message table. Optional.
+      // 'messageTable' => '{{%message}}',
+     */
 
-        /*
-          // 'po' output format is for saving messages to gettext po files.
-          'format' => 'po',
-          // Root directory containing message translations.
-          'messagePath' => __DIR__ . DIRECTORY_SEPARATOR . 'messages',
-          // Name of the file that will be used for translations.
-          'catalog' => 'messages',
-          // boolean, whether the message file should be overwritten with the merged messages
-          'overwrite' => true,
-         */
+    /*
+      // 'po' output format is for saving messages to gettext po files.
+      'format' => 'po',
+      // Root directory containing message translations.
+      'messagePath' => __DIR__ . DIRECTORY_SEPARATOR . 'messages',
+      // Name of the file that will be used for translations.
+      'catalog' => 'messages',
+      // boolean, whether the message file should be overwritten with the merged messages
+      'overwrite' => true,
+     */
 ];

@@ -8,8 +8,8 @@
 
 namespace humhub\assets;
 
+use humhub\components\assets\AssetBundle;
 use Yii;
-use yii\web\AssetBundle;
 
 /**
  * TimeAgo Asset Locale
@@ -19,21 +19,36 @@ use yii\web\AssetBundle;
  */
 class JqueryTimeAgoLocaleAsset extends AssetBundle
 {
+    /**
+     * @inheritdoc
+     */
+    public $defer = false;
+
+    /**
+     * @inheritdoc
+     *
+     * Must stay identical to `JqueryTimeAgoAsset::$publishOptions` as both
+     * bundles publish the same source path.
+     */
+    public $publishOptions = [
+        'only' => [
+            'jquery.timeago.js',
+            'locales/*',
+        ],
+    ];
 
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/jquery-timeago';
+    public $sourcePath = '@npm/timeago';
 
     /**
      * @var array language mapping between humhub locale id and timeago messages
      */
     public $languageMapping = [
         'nb_no' => 'no',
-        'pt_br' => 'pt-br',
-        'zh_cn' => 'zh-CN',
-        'zh_tw' => 'zh-TW',
-        'fa_ir' => 'fa',
+        'pt-BR' => 'pt-br',
+        'fa-IR' => 'fa',
     ];
 
     /**

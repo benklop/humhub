@@ -2,29 +2,61 @@
 
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2015 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2018 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
 
 namespace humhub\modules\post\widgets;
 
+use humhub\modules\content\widgets\stream\WallStreamEntryWidget;
+use humhub\modules\post\models\Post;
+use humhub\modules\post\Module;
+use Yii;
+
 /**
  * @inheritdoc
  */
-class WallEntry extends \humhub\modules\content\widgets\WallEntry
+class WallEntry extends WallStreamEntryWidget
 {
+    /**
+     * Route to create a content
+     *
+     * @var string
+     */
+    public $createRoute = '/post/post/create-form';
 
     /**
      * @inheritdoc
      */
-    public $editRoute = "/post/post/edit";
+    public $editRoute = '/post/post/edit';
 
     /**
      * @inheritdoc
      */
-    public function run()
+    public $createFormSortOrder = 100;
+
+    /**
+     * @inheritdoc
+     */
+    public $createFormClass = Form::class;
+
+    /**
+     * @inheritdoc
+     */
+    protected function renderContent()
     {
-        return $this->render('wallEntry', array('post' => $this->contentObject, 'justEdited' => $this->justEdited));
-    }
+        /** @var Module $module */
+        $module = Yii::$app->getModule('post');
 
+        $guestExpandPosts = $module->guestExpandPosts && Yii::$app->user->isGuest;
+
+        return $this->render('wallEntry', [
+            'post' => $this->model,
+            'justEdited' => $this->renderOptions->isJustEdited(), // compatibility for themed legacy views
+            'renderOptions' => $this->renderOptions,
+            'enableDynamicFontSize' => $module->enableDynamicFontSize,
+            'collapsedPostHeight' => $guestExpandPosts ? 0 : $module->collapsedPostHeight,
+            'guestExpandPosts' => $guestExpandPosts,
+        ]);
+    }
 }

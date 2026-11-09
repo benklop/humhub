@@ -2,31 +2,38 @@
 
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2018 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
 
 namespace humhub\libs;
 
-use Yii;
-use yii\base\Object;
-use yii\base\Exception;
 use humhub\modules\space\models\Space;
+use humhub\modules\user\components\PermissionManager;
+use humhub\modules\user\models\User;
+use Yii;
+use yii\base\BaseObject;
+use yii\base\Event;
+use yii\base\Exception;
 
 /**
  * BasePermission
 
  * @author luke
  */
-class BasePermission extends Object
+class BasePermission extends BaseObject
 {
+    /**
+     * @event Event an event that is triggered when the permission is initialized via [[init()]].
+     */
+    public const EVENT_INIT = 'init';
 
     /**
      * Permission States
      */
-    const STATE_DEFAULT = '';
-    const STATE_ALLOW = 1;
-    const STATE_DENY = 0;
+    public const STATE_DEFAULT = '';
+    public const STATE_ALLOW = 1;
+    public const STATE_DENY = 0;
 
     /**
      * @var string id of the permission (default is classname)
@@ -36,7 +43,7 @@ class BasePermission extends Object
     /**
      * @var string title of the permission
      */
-    protected $title ='';
+    protected $title = '';
 
     /**
      * @var string description of the permission
@@ -86,17 +93,26 @@ class BasePermission extends Object
     public $contentContainer = null;
 
     /**
+     * @inheritdoc
+     */
+    public function init()
+    {
+        parent::init();
+        Event::trigger($this, self::EVENT_INIT);
+    }
+
+    /**
      * Returns the ID
      *
      * @return string the id of the permission
      */
     public function getId()
     {
-        if ($this->id != "") {
+        if ($this->id != '') {
             return $this->id;
         }
 
-        return $this->className();
+        return static::class;
     }
 
     /**
@@ -130,6 +146,24 @@ class BasePermission extends Object
     }
 
     /**
+     * This function must return a unique que.
+     * It must either start with the module id, or be a valid UUID.
+     * The function may return null to avoid caching in the PermissionManager.
+     *
+     * @param array $parameters Parameters passed to PermissionManager::can() which allows a permission to evaluate if caching should be disabled
+     *
+     * @return string|null A unique string (see method description) or null, if caching should be disabled
+     * @since 1.15.2
+     * @see PermissionManager::can()
+     * @see UUID::v4()
+     * @noinspection PhpUnusedParameterInspection
+     */
+    public function getCacheKey(array $parameters = []): ?string
+    {
+        return $this->getModuleId() . $this->getId();
+    }
+
+    /**
      * Returns the default state of the permission.
      * The defaultState is either defined by setting $defaultState attribute
      * or by overwriting the $defaultState by means of the configuration param 'defaultPermissions'.
@@ -142,14 +176,15 @@ class BasePermission extends Object
     public function getDefaultState($groupId)
     {
         $configuredState = $this->getConfiguredState($groupId);
-
         if ($configuredState !== null) {
             return $configuredState;
-        } else if ($this->defaultState == self::STATE_ALLOW) {
-            return self::STATE_ALLOW;
-        } else {
-            return (int) (in_array($groupId, $this->defaultAllowedGroups));
         }
+
+        if ($this->defaultState == self::STATE_ALLOW) {
+            return self::STATE_ALLOW;
+        }
+
+        return (int) (in_array($groupId, $this->defaultAllowedGroups));
     }
 
     /**
@@ -158,13 +193,25 @@ class BasePermission extends Object
      * the configuration.
      *
      * @param int $groupId
-     * @return int
+     * @return int|null
      * @since 1.2
      */
     protected function getConfiguredState($groupId)
     {
-        if (isset(Yii::$app->params['defaultPermissions'][self::className()]) && isset(Yii::$app->params['defaultPermissions'][self::className()][$groupId])) {
-            return Yii::$app->params['defaultPermissions'][self::className()][$groupId];
+        if (!isset(Yii::$app->params['defaultPermissions'][static::class])) {
+            return null;
+        }
+
+        if (isset(Yii::$app->params['defaultPermissions'][static::class][$groupId])) {
+            return Yii::$app->params['defaultPermissions'][static::class][$groupId];
+        }
+
+        // Allow asterisk to overwrite all groups excluding guest groups
+        if (
+            isset(Yii::$app->params['defaultPermissions'][static::class]['*'])
+            && !in_array($groupId, [Space::USERGROUP_GUEST, User::USERGROUP_GUEST], true)
+        ) {
+            return Yii::$app->params['defaultPermissions'][static::class]['*'];
         }
 
         return null;
@@ -173,7 +220,7 @@ class BasePermission extends Object
     /**
      * Checks if permission state can be changed
      *
-     * @return boolean
+     * @return bool
      */
     public function canChangeState($groupId)
     {
@@ -183,7 +230,7 @@ class BasePermission extends Object
     /**
      * Checks the given id belongs to this permission
      *
-     * @return boolean
+     * @return bool
      */
     public function hasId($id)
     {
@@ -194,6 +241,7 @@ class BasePermission extends Object
      * Returns the label for given State
      *
      * @return string the label
+     * @throws Exception
      */
     public static function getLabelForState($state)
     {
@@ -208,4 +256,13 @@ class BasePermission extends Object
         throw new Exception('Invalid permission state');
     }
 
+    /**
+     * @param array Ids of additional fixed groups
+     */
+    public function addFixedGroups($groupIds)
+    {
+        if (is_array($groupIds) && !empty($groupIds)) {
+            $this->fixedGroups = array_merge($this->fixedGroups, $groupIds);
+        }
+    }
 }

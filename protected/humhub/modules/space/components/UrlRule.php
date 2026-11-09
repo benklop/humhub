@@ -2,14 +2,14 @@
 
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2016 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
 
 namespace humhub\modules\space\components;
 
-use yii\web\UrlRuleInterface;
-use yii\base\Object;
+use humhub\components\ContentContainerUrlRule;
+use humhub\modules\content\components\ContentContainerActiveRecord;
 use humhub\modules\space\models\Space;
 
 /**
@@ -17,87 +17,58 @@ use humhub\modules\space\models\Space;
  *
  * @author luke
  */
-class UrlRule extends Object implements UrlRuleInterface
+class UrlRule extends ContentContainerUrlRule
 {
-
     /**
-     * @var string default route to space home
+     * @inheritdoc
      */
-    public $defaultRoute = 'space/space';
-
-    /**
-     * @var array map with space guid/url pairs
-     */
-    protected static $spaceUrlMap = [];
+    protected $defaultRoute = 'space/space';
 
     /**
      * @inheritdoc
      */
-    public function createUrl($manager, $route, $params)
+    protected $urlPrefix = 's';
+
+    /**
+     * @inheritdoc
+     */
+    protected $routePrefixes = ['<contentContainer>', '<spaceContainer>'];
+
+    /**
+     * @inheritdoc
+     */
+    public static $containerUrlMap = [];
+
+    /**
+     * @inheritdoc
+     */
+    protected static function getContentContainerByUrl(string $url): ?ContentContainerActiveRecord
     {
-        if (isset($params['sguid'])) {
-            if ($route == $this->defaultRoute) {
-                $route = '';
-            }
-
-            $urlPart = static::getUrlBySpaceGuid($params['sguid']);
-            if ($urlPart !== null) {
-                $url = "s/" . urlencode($urlPart) . "/" . $route;
-                unset($params['sguid']);
-
-                if (!empty($params) && ($query = http_build_query($params)) !== '') {
-                    $url .= '?' . $query;
-                }
-                return $url;
-            }
-        }
-        return false;
+        return Space::find()->where(['guid' => $url])->orWhere(['url' => $url])->one();
     }
 
     /**
      * @inheritdoc
      */
-    public function parseRequest($manager, $request)
+    protected static function getContentContainerByGuid(string $guid): ?ContentContainerActiveRecord
     {
-        $pathInfo = $request->getPathInfo();
-        if (substr($pathInfo, 0, 2) == "s/") {
-            $parts = explode('/', $pathInfo, 3);
-            if (isset($parts[1])) {
-                $space = Space::find()->where(['guid' => $parts[1]])->orWhere(['url' => $parts[1]])->one();
-                if ($space !== null) {
-                    if (!isset($parts[2]) || $parts[2] == "") {
-                        $parts[2] = $this->defaultRoute;
-                    }
-
-                    $params = $request->get();
-                    $params['sguid'] = $space->guid;
-
-                    return [$parts[2], $params];
-                }
-            }
-        }
-        return false;
+        return Space::findOne(['guid' => $guid]);
     }
 
     /**
-     * Gets space url name by given guid
-     * 
-     * @param string $guid
-     * @return string|null the space url part
+     * @inheritdoc
      */
-    public static function getUrlBySpaceGuid($guid)
+    protected static function getUrlMapFromContentContainer(ContentContainerActiveRecord $contentContainer): ?string
     {
-        if (isset(static::$spaceUrlMap[$guid])) {
-            return static::$spaceUrlMap[$guid];
-        }
+        return $contentContainer->url ?? $contentContainer->guid ?? null;
+    }
 
-        $space = Space::findOne(['guid' => $guid]);
-        if ($space !== null) {
-            static::$spaceUrlMap[$space->guid] = ($space->url != '') ? $space->url : $space->guid;
-            return static::$spaceUrlMap[$space->guid];
-        }
-
-        return null;
+    /**
+     * @inheritdoc
+     */
+    protected static function isContentContainerInstance(ContentContainerActiveRecord $contentContainer): bool
+    {
+        return ($contentContainer instanceof Space);
     }
 
 }

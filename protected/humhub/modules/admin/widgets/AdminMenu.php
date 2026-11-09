@@ -8,134 +8,173 @@
 
 namespace humhub\modules\admin\widgets;
 
+use humhub\components\Application;
+use humhub\helpers\ControllerHelper;
+use humhub\helpers\Html;
+use humhub\modules\admin\permissions\ManageGroups;
+use humhub\modules\admin\permissions\ManageModules;
+use humhub\modules\admin\permissions\ManageSettings;
+use humhub\modules\admin\permissions\ManageSpaces;
+use humhub\modules\admin\permissions\ManageUsers;
+use humhub\modules\admin\permissions\SeeAdminInformation;
+use humhub\modules\marketplace\services\MarketplaceService;
+use humhub\modules\ui\menu\MenuEntry;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\modules\ui\menu\widgets\LeftNavigation;
+use humhub\widgets\bootstrap\Badge;
 use Yii;
-use yii\helpers\Url;
 
 /**
- * Description of AdminMenu
+ * AdminMenu implements the navigation in the administration section.
+ *
+ * Please note: Whenever there are entries visible for the current user, the "Administration" menu item
+ * is displayed in the UserAccountMenu.
+ *
+ * The visibility of module menu entries should always be made based on the 'ManageModules' permission.
+ * If a MenuEntry has no specified visibility, the permission `ManageModules` is automatically used.
+ *
+ * Example menu entry:
+ *
+ * ```php
+ * $adminMenuWidget->addEntry(new MenuLink([
+ *     'id' => 'modules',
+ *     'label' => Yii::t('ExampleModule.base', 'Your cool module'),
+ *     'url' => ['/example/module/admin'],
+ *     'icon' => 'rocket',
+ *     'sortOrder' => 500,
+ *     'isActive' => ControllerHelper::isActivePath('example', 'module'),
+ *     'isVisible' => Yii::$app->user->can(ManageModules::class)
+ *  ]));
+ * ```
  *
  * @author luke
  */
-class AdminMenu extends \humhub\widgets\BaseMenu
+class AdminMenu extends LeftNavigation
 {
+    public const SESSION_CAN_SEE_ADMIN_SECTION = 'user.canSeeAdminSection';
 
-    public $template = "@humhub/widgets/views/leftNavigation";
-    public $type = "adminNavigation";
+    /**
+     * @inheritdoc
+     */
     public $id = "admin-menu";
 
+    /**
+     * @inheritdoc
+     */
     public function init()
     {
-        $this->addItemGroup([
-            'id' => 'admin',
-            'label' => \Yii::t('AdminModule.widgets_AdminMenuWidget', '<strong>Administration</strong> menu'),
-            'sortOrder' => 100,
-        ]);
+        $this->panelTitle = Yii::t('AdminModule.base', '<strong>Administration</strong> menu');
 
-        $this->addItem([
-            'label' => \Yii::t('AdminModule.widgets_AdminMenuWidget', 'Users'),
-            'url' => Url::toRoute(['/admin/user']),
-            'icon' => '<i class="fa fa-user"></i>',
+        $this->addEntry(new MenuLink([
+            'id' => 'user',
+            'label' => Yii::t('AdminModule.base', 'Users'),
+            'url' => ['/admin/user'],
+            'icon' => 'user',
             'sortOrder' => 200,
-            'isActive' => (\Yii::$app->controller->module && \Yii::$app->controller->module->id == 'admin' && (Yii::$app->controller->id == 'user' || Yii::$app->controller->id == 'group' || Yii::$app->controller->id == 'approval' || Yii::$app->controller->id == 'authentication' || Yii::$app->controller->id == 'user-profile' || Yii::$app->controller->id == 'pending-registrations')),
+            'isActive' => ControllerHelper::isActivePath('admin', ['user', 'group', 'approval', 'authentication', 'user-profile', 'pending-registrations', 'user-permissions', 'user-people'])
+                || ControllerHelper::isActivePath('ldap', 'admin'),
             'isVisible' => Yii::$app->user->can([
-                new \humhub\modules\admin\permissions\ManageUsers(),
-                new \humhub\modules\admin\permissions\ManageSettings(),
-                new \humhub\modules\admin\permissions\ManageGroups()
-            ]),
-        ]);
+                ManageUsers::class,
+                ManageSettings::class,
+                ManageGroups::class,
+            ]) || Yii::$app->user->isGroupManager(),
+        ]));
 
-        $this->addItem([
-            'label' => Yii::t('AdminModule.widgets_AdminMenuWidget', 'Spaces'),
+        $this->addEntry(new MenuLink([
             'id' => 'spaces',
-            'url' => Url::toRoute('/admin/space'),
-            'icon' => '<i class="fa fa-inbox"></i>',
+            'label' => Yii::t('AdminModule.base', 'Spaces'),
+            'url' => ['/admin/space'],
+            'icon' => 'dot-circle-o',
             'sortOrder' => 400,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'space'),
+            'isActive' => ControllerHelper::isActivePath('admin', 'space'),
             'isVisible' => Yii::$app->user->can([
-                new \humhub\modules\admin\permissions\ManageSpaces(),
-                new \humhub\modules\admin\permissions\ManageSettings(),
+                ManageSpaces::class,
+                ManageSettings::class,
             ]),
-        ]);
+        ]));
 
-        $this->addItem([
-            'label' => Yii::t('AdminModule.widgets_AdminMenuWidget', 'Modules'),
+        $this->addEntry(new MenuLink([
             'id' => 'modules',
-            'url' => Url::toRoute('/admin/module'),
-            'icon' => '<i class="fa fa-rocket"></i>',
+            'label' => Html::encode(Yii::t('AdminModule.base', 'Modules')) . $this->getMarketplaceUpdatesBadge(),
+            'encodeLabel' => false,
+            'url' => ['/admin/module'],
+            'icon' => 'rocket',
             'sortOrder' => 500,
-            'newItemCount' => 0,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'module'),
-            'isVisible' => Yii::$app->user->can(new \humhub\modules\admin\permissions\ManageModules())
-        ]);
+            'htmlOptions' => ['class' => 'modules'],
+            'isActive' => ControllerHelper::isActivePath('admin', 'module'),
+            'isVisible' => Yii::$app->user->can(ManageModules::class) || Yii::$app->user->can(ManageSettings::class),
+        ]));
 
-        $this->addItem([
-            'label' => Yii::t('AdminModule.widgets_AdminMenuWidget', 'Settings'),
-            'url' => Url::toRoute('/admin/setting'),
-            'icon' => '<i class="fa fa-gears"></i>',
+        $this->addEntry(new MenuLink([
+            'id' => 'settings',
+            'label' => Yii::t('AdminModule.base', 'Settings'),
+            'url' => ['/admin/setting'],
+            'icon' => 'gears',
             'sortOrder' => 600,
-            'newItemCount' => 0,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'setting'),
-            'isVisible' => Yii::$app->user->can(new \humhub\modules\admin\permissions\ManageSettings())
-        ]);
+            'isActive' => ControllerHelper::isActivePath('admin', 'setting'),
+            'isVisible' => Yii::$app->user->can(ManageSettings::class),
+        ]));
 
-        $this->addItem([
-            'label' => Yii::t('AdminModule.widgets_AdminMenuWidget', 'Information'),
-            'url' => Url::toRoute('/admin/information'),
-            'icon' => '<i class="fa fa-info-circle"></i>',
-            'sortOrder' => 10000,
-            'newItemCount' => 0,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'information'),
-            'isVisible' => Yii::$app->user->can(new \humhub\modules\admin\permissions\SeeAdminInformation())
-        ]);
+        $this->addEntry(new MenuLink([
+            'id' => 'information',
+            'label' => Yii::t('AdminModule.base', 'Information'),
+            'url' => ['/admin/information'],
+            'icon' => 'info-circle',
+            'sortOrder' => 1000,
+            'isActive' => ControllerHelper::isActivePath('admin', ['information', 'logging']),
+            'isVisible' => Yii::$app->user->can(SeeAdminInformation::class),
+        ]));
 
         parent::init();
     }
 
     /**
-     * @inheritdoc
+     * Returns whether the current user can see the admin menu.
+     *
+     * @return bool
      */
-    public function run()
+    public static function canAccess(): bool
     {
-        // Workaround for modules with no admin menu permission support.
-        if (!Yii::$app->user->isAdmin()) {
-            foreach ($this->items as $key => $item) {
-                if (!isset($item['isVisible'])) {
-                    unset($this->items[$key]);
-                }
-            }
+        if (!(Yii::$app instanceof Application)) {
+            return false;
         }
 
-        return parent::run();
-    }
-
-    public function addItem($item)
-    {
-        $item['group'] = 'admin';
-
-        parent::addItem($item);
-    }
-
-    public static function canAccess()
-    {
-        $canSeeAdminSection = Yii::$app->session->get('user.canSeeAdminSection');
-        if ($canSeeAdminSection == null) {
-            $canSeeAdminSection = Yii::$app->user->isAdmin() ? true : self::checkNonAdminAccess();
-            Yii::$app->session->set('user.canSeeAdminSection', $canSeeAdminSection);
+        $canSeeAdminSection = Yii::$app->session->get(static::SESSION_CAN_SEE_ADMIN_SECTION);
+        if ($canSeeAdminSection === null) {
+            $canSeeAdminSection = Yii::$app->user->isAdmin() || !empty((new self())->getEntries(null, true));
+            Yii::$app->session->set(static::SESSION_CAN_SEE_ADMIN_SECTION, $canSeeAdminSection);
         }
 
-		return $canSeeAdminSection;
+        return (bool)$canSeeAdminSection;
     }
 
-    private static function checkNonAdminAccess()
+    /**
+     * Resets the caching, if the current user can see the AdminMenu.
+     */
+    public static function reset()
     {
-        $adminMenu = new self();
-        foreach($adminMenu->items as $item) {
-            if(isset($item['isVisible']) && $item['isVisible']) {
-                return true;
-            }
+        if (Yii::$app instanceof Application) {
+            Yii::$app->session->remove(static::SESSION_CAN_SEE_ADMIN_SECTION);
+        }
+    }
+
+    /**
+     * @inheritDoc
+     * @notice If the MenuEntry has not specified visibility, the Permission ManageModules is automatically used.
+     */
+    public function addEntry(MenuEntry $entry)
+    {
+        if (!$entry->isVisibilitySet()) {
+            $entry->setIsVisible(Yii::$app->user->can(ManageModules::class));
         }
 
-		return false;
+        parent::addEntry($entry);
+    }
+
+    private function getMarketplaceUpdatesBadge(): string
+    {
+        $updatesCount = (new MarketplaceService())->getPendingModuleUpdateCount();
+        return $updatesCount > 0 ? '&nbsp;&nbsp;' . Badge::danger($updatesCount) : '';
     }
 
 }

@@ -18,7 +18,6 @@ use humhub\modules\notification\components\NotificationCategory;
  */
 class CommentNotificationCategory extends NotificationCategory
 {
-
     /**
      * @inheritdoc
      */
@@ -29,7 +28,7 @@ class CommentNotificationCategory extends NotificationCategory
      */
     public function getDescription()
     {
-        return Yii::t('CommentModule.notifications_NotificationCategory', 'Receive Notifications when someone comments on my own or a following post.');
+        return Yii::t('CommentModule.notification', 'Receive Notifications when someone comments on my own or a following post.');
     }
 
     /**
@@ -37,7 +36,7 @@ class CommentNotificationCategory extends NotificationCategory
      */
     public function getTitle()
     {
-        return Yii::t('CommentModule.notifications_NotificationCategory', 'Comments');
+        return Yii::t('CommentModule.notification', 'Comments');
     }
 
 }

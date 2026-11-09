@@ -17,7 +17,6 @@ use yii\base\Model;
  */
 class ChooseLanguage extends Model
 {
-
     /**
      * @var string the language
      */
@@ -38,16 +37,16 @@ class ChooseLanguage extends Model
      */
     public function attributeLabels()
     {
-        return array(
+        return [
             'language' => Yii::t('base', 'Language'),
-        );
+        ];
     }
 
     /**
      * Stores language as cookie
      *
      * @since 1.2
-     * @return boolean
+     * @return bool
      */
     public function save()
     {
@@ -79,7 +78,7 @@ class ChooseLanguage extends Model
                 // Invalid cookie
                 $cookie = new \yii\web\Cookie([
                     'name' => 'language',
-                    'value' => 'en',
+                    'value' => 'en-US',
                     'expire' => 1,
                 ]);
                 Yii::$app->getResponse()->getCookies()->add($cookie);

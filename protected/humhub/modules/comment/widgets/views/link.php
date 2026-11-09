@@ -1,25 +1,45 @@
 <?php
 
-use yii\helpers\Html;
+use humhub\components\View;
+use humhub\helpers\Html;
+use humhub\modules\comment\models\Comment;
+use humhub\modules\comment\Module;
+use humhub\modules\comment\widgets\CommentLink;
+use humhub\widgets\bootstrap\Link;
 use yii\helpers\Url;
 
-$commentCount = $this->context->getCommentsCount();
+/* @var $this View */
+/* @var $content \humhub\modules\content\models\Content */
+/* @var $parentComment Comment */
+/* @var $id string unique object id */
+/* @var $commentCount int */
+/* @var $mode string */
+/* @var $isNestedComment bool */
+/* @var $module Module */
+
 $hasComments = ($commentCount > 0);
-$commentCountSpan = Html::tag('span', ' ('.$commentCount.')', [
+$commentCountSpan = Html::tag('span', ' (' . $commentCount . ')', [
     'class' => 'comment-count',
     'data-count' => $commentCount,
-    'style' => ($hasComments) ? null : 'display:none'
+    'style' => ($hasComments) ? null : 'display:none',
 ]);
 
-?>
+$label = ($isNestedComment) ? Yii::t('CommentModule.base', "Reply") : Yii::t('CommentModule.base', "Comment");
 
-<?php if ($mode == \humhub\modules\comment\widgets\CommentLink::MODE_POPUP): ?>
-    <?php $url = Url::to(['/comment/comment/show', 'contentModel' => $objectModel, 'contentId' => $objectId, 'mode' => 'popup']); ?>
+?>
+<?php if ($mode == CommentLink::MODE_POPUP): ?>
+    <?php $url = Url::to(['/comment/comment/show', 'contentId' => $content->id, 'parentCommentId' => $parentComment?->id, 'mode' => 'popup']); ?>
     <a href="#" data-action-click="ui.modal.load" data-action-url="<?= $url ?>">
-        <?= Yii::t('CommentModule.widgets_views_link', "Comment").'('.$this->context->getCommentsCount().')' ?>
+        <?= $label . ' (' . $commentCount . ')' ?>
     </a>
-<?php elseif(Yii::$app->user->isGuest): ?>
-    <?= Html::a(Yii::t('CommentModule.widgets_views_link', "Comment").$commentCountSpan, Yii::$app->user->loginUrl, ['data-target' => '#globalModal']) ?>
+<?php elseif (Yii::$app->user->isGuest): ?>
+    <?= Html::a(
+        $label . $commentCountSpan,
+        Yii::$app->user->loginUrl,
+        ['data-bs-target' => '#globalModal']
+    ) ?>
 <?php else : ?>
-    <?= Html::a(Yii::t('CommentModule.widgets_views_link', "Comment").$commentCountSpan, "#",['onClick' => "$('#comment_" . $id . "').slideToggle('fast');$('#newCommentForm_" . $id . "').focus();return false;"]); ?>
+    <?= Link::to($label . $commentCountSpan)
+        ->encodeLabel(false)
+        ->action('comment.toggleComment', null, '#comment_' . $id) ?>
 <?php endif; ?>

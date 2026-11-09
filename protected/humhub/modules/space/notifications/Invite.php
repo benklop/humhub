@@ -8,9 +8,9 @@
 
 namespace humhub\modules\space\notifications;
 
-use Yii;
-use yii\bootstrap\Html;
+use humhub\helpers\Html;
 use humhub\modules\notification\components\BaseNotification;
+use Yii;
 
 /**
  * If an user was invited to a workspace, this notification is fired.
@@ -19,16 +19,15 @@ use humhub\modules\notification\components\BaseNotification;
  */
 class Invite extends BaseNotification
 {
+    /**
+     * @inheritdoc
+     */
+    public $moduleId = 'space';
 
     /**
      * @inheritdoc
      */
-    public $moduleId = "space";
-
-    /**
-     * @inheritdoc
-     */
-    public $viewName = "invite";
+    public $viewName = 'invite';
 
     /**
      * @inheritdoc
@@ -36,15 +35,15 @@ class Invite extends BaseNotification
     public $markAsSeenOnClick = false;
 
     /**
-     *  @inheritdoc
+     * @inheritdoc
      */
     public function category()
     {
-        return new SpaceMemberNotificationCategory;
+        return new SpaceMemberNotificationCategory();
     }
 
     /**
-     *  @inheritdoc
+     * @inheritdoc
      */
     public function getSpace()
     {
@@ -52,11 +51,19 @@ class Invite extends BaseNotification
     }
 
     /**
-     *  @inheritdoc
+     * @inheritdoc
+     */
+    public function getUrl()
+    {
+        return $this->source->createUrl('/space/space/about');
+    }
+
+    /**
+     * @inheritdoc
      */
     public function getMailSubject()
     {
-        return strip_tags($this->html());
+        return $this->getInfoText($this->originator->displayName, $this->getSpace()->displayName);
     }
 
     /**
@@ -64,12 +71,22 @@ class Invite extends BaseNotification
      */
     public function html()
     {
-        return Yii::t('SpaceModule.notification', '{displayName} invited you to the space {spaceName}', array(
-                    '{displayName}' => Html::tag('strong', Html::encode($this->originator->displayName)),
-                    '{spaceName}' => Html::tag('strong', Html::encode($this->getSpace()->name))
+        return $this->getInfoText(Html::tag(
+            'strong',
+            Html::encode($this->originator->displayName),
+        ), Html::tag(
+            'strong',
+            Html::encode($this->getSpace()->displayName),
         ));
+
     }
 
-}
+    private function getInfoText($displayName, $spaceName)
+    {
+        return Yii::t('SpaceModule.notification', '{displayName} invited you to the space {spaceName}', [
+            '{displayName}' => $displayName,
+            '{spaceName}' => $spaceName,
+        ]);
 
-?>
+    }
+}

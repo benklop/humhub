@@ -1,17 +1,20 @@
 <?php
 
-use yii\helpers\Html;
+use humhub\modules\user\models\User;
+
+/* @var $user User */
+/* @var $linkPasswordReset string */
 
 ?>
-<?php echo strip_tags(Yii::t('UserModule.views_mails_RecoverPassword', '<strong>Password</strong> recovery')); ?>
+<?= strip_tags(Yii::t('UserModule.auth', '<strong>Password</strong> recovery')) ?>
 
 
-<?php echo strip_tags(Yii::t('UserModule.views_mails_RecoverPassword', 'Hello {displayName}', array('{displayName}' => Html::encode($user->displayName)))); ?>
+<?= Yii::t('UserModule.auth', 'Hello {displayName}', ['{displayName}' => $user->displayName]) ?>
 
 
-<?php echo strip_tags(Yii::t('UserModule.views_mails_RecoverPassword', 'Please use the following link within the next day to reset your password.')); ?>
+<?= Yii::t('UserModule.auth', 'Please use the following link within the next day to reset your password.') ?>
 
-<?php echo strip_tags(Yii::t('UserModule.views_mails_RecoverPassword', "If you don't use this link within 24 hours, it will expire.")); ?>
+<?= Yii::t('UserModule.auth', "If you don't use this link within 24 hours, it will expire.") ?>
 
 
-<?php echo strip_tags(Yii::t('UserModule.views_mails_RecoverPassword', 'Reset Password')); ?>: <?php echo urldecode($linkPasswordReset); ?>
+<?= Yii::t('UserModule.auth', 'Reset Password') ?>: <?= urldecode((string) $linkPasswordReset) ?>

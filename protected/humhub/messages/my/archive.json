@@ -44,8 +44,8 @@
 	"Collapse": [
 		"Tutup"
 	],
-	"Content Addon source must be instance of HActiveRecordContent or HActiveRecordContentAddon!": [
-		"Sumber kandungan addon mestilah daripada HActiveRecordContent atau HActiveRecordContentAddon!"
+	"Content Addon source must be instance of ContentActiveRecord or ContentAddonActiveRecord!": [
+		"Sumber kandungan addon mestilah daripada ContentActiveRecord atau ContentAddonActiveRecord!"
 	],
 	"Could not determine content container!": [
 		"Tidak dapat mengesahkan bekas kandungan!"
@@ -964,7 +964,7 @@
 	"View space": [
 		"Ver espacio"
 	],
-	"<strong>Manage</strong> spaces": [
+	"<strong>Manage</strong> Spaces": [
 		"<strong>Gestionar</strong> espacios"
 	],
 	"Define here default settings for new spaces.": [
@@ -1260,7 +1260,7 @@
 	"Unstick": [
 		"Desfijar"
 	],
-	"<b>Nobody wrote something yet.</b><br>Make the beginning and post something...": [
+	"<b>Nobody has written anything yet.</b><br>Post to get things started...": [
 		"<b>Nadie ha escrito nada aún.</b><br/>Marca un comienzo y escribe algo..."
 	],
 	"<b>This profile stream is still empty</b>": [

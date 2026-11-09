@@ -1,20 +1,26 @@
 <?php
 
+/**
+ * @link https://www.humhub.org/
+ * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
+ * @license https://www.humhub.com/licences
+ */
+
 namespace humhub\modules\content\models;
 
-
+use yii\db\ActiveRecord;
 
 /**
  * This is the model class for table "contentcontainer_permission".
  *
  * @property string $permission_id
- * @property integer $contentcontainer_id
+ * @property int $contentcontainer_id
  * @property string $group_id
  * @property string $module_id
  * @property string $class
- * @property integer $state
+ * @property int $state
  */
-class ContentContainerPermission extends \yii\db\ActiveRecord
+class ContentContainerPermission extends ActiveRecord
 {
     /**
      * @inheritdoc
@@ -32,22 +38,8 @@ class ContentContainerPermission extends \yii\db\ActiveRecord
         return [
             [['permission_id', 'contentcontainer_id', 'group_id', 'module_id'], 'required'],
             [['contentcontainer_id', 'state'], 'integer'],
-            [['permission_id', 'group_id', 'module_id', 'class'], 'string', 'max' => 255]
+            [['permission_id', 'group_id', 'module_id', 'class'], 'string', 'max' => 255],
         ];
     }
 
-    /**
-     * @inheritdoc
-     */
-    public function attributeLabels()
-    {
-        return [
-            'permission_id' => 'Permission ID',
-            'contentcontainer_id' => 'Contentcontainer ID',
-            'group_id' => 'Role ID',
-            'module_id' => 'Module ID',
-            'class' => 'Class',
-            'state' => 'State',
-        ];
-    }
 }

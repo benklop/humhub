@@ -1,3 +1,8 @@
-<button class="btn btn-primary" data-action-click="ui.modal.load" data-action-url="<?= $space->createUrl('/space/membership/invite') ?>">
-    <i class="fa fa-plus"></i> <?= Yii::t('SpaceModule.widgets_views_inviteButton', 'Invite') ?>
-</button>
+<?php
+
+use humhub\widgets\modal\ModalButton;
+
+?>
+
+<?= ModalButton::primary(Yii::t('SpaceModule.base', 'Invite'))
+    ->load($space->createUrl('/space/membership/invite'))->icon('invite') ?>

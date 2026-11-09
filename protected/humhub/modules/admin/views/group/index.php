@@ -1,58 +1,109 @@
 <?php
 
-use yii\helpers\Url;
-use yii\helpers\Html;
+use humhub\helpers\Html;
+use humhub\libs\ActionColumn;
+use humhub\modules\admin\models\GroupSearch;
+use humhub\modules\admin\permissions\ManageGroups;
+use humhub\modules\admin\widgets\GroupMenu;
+use humhub\modules\user\models\forms\EditGroupForm;
+use humhub\modules\user\models\Group;
+use humhub\widgets\bootstrap\Badge;
+use humhub\widgets\bootstrap\Link;
 use humhub\widgets\GridView;
+use yii\data\ActiveDataProvider;
+
+/* @var $dataProvider ActiveDataProvider */
+/* @var $searchModel GroupSearch */
 ?>
 <div class="panel-body">
-    <h4><?= Yii::t('AdminModule.views_group_index', 'Manage groups'); ?></h4>
+    <?php if (Yii::$app->user->can(ManageGroups::class)): ?>
+        <?= Link::success(Yii::t('AdminModule.user', 'Create new group'))
+            ->link(['edit'])
+            ->icon('add')
+            ->sm()->right() ?>
+    <?php endif ?>
 
-    <div class="help-block">
-        <?= Yii::t('AdminModule.views_groups_index', 'Users can be assigned to different groups (e.g. teams, departments etc.) with specific standard spaces, group managers and permissions.'); ?>
+    <h4><?= Yii::t('AdminModule.user', 'Manage groups'); ?></h4>
+
+    <div class="text-body-secondary">
+        <?= Yii::t('AdminModule.user', 'Users can be assigned to different groups (e.g. teams, departments etc.) with specific standard spaces, group managers and permissions.'); ?>
     </div>
 </div>
 
-<?= \humhub\modules\admin\widgets\GroupMenu::widget(); ?>
+<?= GroupMenu::widget() ?>
 
 <div class="panel-body">
-    <div class="pull-right">
-        <?= Html::a('<i class="fa fa-plus" aria-hidden="true"></i>&nbsp;&nbsp;' . Yii::t('AdminModule.views_groups_index', "Create new group"), Url::to(['edit']), ['class' => 'btn btn-success']); ?>
-    </div>
 
-    <?php
-    echo GridView::widget([
+    <?= GridView::widget([
         'dataProvider' => $dataProvider,
         'filterModel' => $searchModel,
         'tableOptions' => ['class' => 'table table-hover'],
         'columns' => [
-            'name',
-            'description',
+            [
+                'attribute' => 'name',
+                'format' => 'html',
+                'headerOptions' => ['style' => 'min-width:100px'],
+                'value' => fn(Group $group) =>
+                    // Yii::t is available for default texts
+                    Yii::t('AdminModule.base', $group->name) .
+                    ($group->is_default_group ? ' ' . Badge::light(Yii::t('AdminModule.user', 'Default')) : '') .
+                    ($group->is_protected ? ' ' . Badge::light(Yii::t('AdminModule.user', 'Protected')) : '')
+            ],
+            [
+                'attribute' => 'description',
+                'headerOptions' => ['class' => 'text-nowrap'],
+                'value' => fn(Group $group) =>
+                    // Yii::t is available for default texts
+                    Yii::t('AdminModule.base', $group->description)
+            ],
+            [
+                'attribute' => 'type',
+                'label' => Yii::t('AdminModule.user', 'Type'),
+                'format' => 'raw',
+                'headerOptions' => ['class' => 'text-nowrap'],
+                'filterOptions' => ['class' => 'text-nowrap'],
+                'contentOptions' => ['class' => 'text-center'],
+                'value' => fn(Group $group) => Badge::light($group->getTypeTitle()),
+                'filter' => Html::activeDropDownList($searchModel, 'type', [
+                    '' => Yii::t('AdminModule.base', 'All')
+                ] + EditGroupForm::getTypeOptions()),
+            ],
             [
                 'attribute' => 'members',
-                'label' => Yii::t('AdminModule.views_group_index', 'Members'),
+                'label' => Yii::t('AdminModule.user', 'Members'),
                 'format' => 'raw',
-                'options' => ['style' => 'text-align:center;'],
-                'value' => function ($data) {
-                    return $data->getGroupUsers()->count();
+                'headerOptions' => ['class' => 'text-nowrap'],
+                'contentOptions' => ['class' => 'text-nowrap text-center'],
+                'value' => function (Group $group) {
+                    $usersCount = $group->getGroupUsers()->count();
+                    if ($subGroupUsersCount = $group->getSubGroupUsersCount()) {
+                        $usersCount .= ' (+' . $subGroupUsersCount . ')';
+                    }
+                    return $usersCount;
                 }
             ],
             [
-                'header' => Yii::t('AdminModule.views_group_index', 'Actions'),
-                'class' => 'yii\grid\ActionColumn',
-                'options' => ['width' => '80px'],
-                'buttons' => [
-                    'view' => function() {
-                        return;
-                    },
-                    'delete' => function() {
-                        return;
-                    },
-                    'update' => function($url, $model) {
-                        return Html::a('<i class="fa fa-pencil"></i>', Url::toRoute(['edit', 'id' => $model->id]), ['class' => 'btn btn-primary btn-xs tt']);
-                    },
-                ],
+                'class' => ActionColumn::class,
+                'actions' => function ($group, $key, $index) {
+                    /* @var $group Group */
+                    if ($group->is_admin_group && !Yii::$app->user->isAdmin()) {
+                        return [];
+                    }
+
+                    $items = [
+                        Yii::t('AdminModule.user', 'Settings') => ['edit'],
+                        '---',
+                    ];
+
+                    if (Yii::$app->user->can(ManageGroups::class)) {
+                        $items[Yii::t('AdminModule.user', 'Permissions')] = ['manage-permissions'];
+                    }
+
+                    $items[Yii::t('AdminModule.user', 'Members')] = ['manage-group-users'];
+
+                    return $items;
+                }
             ],
         ],
-    ]);
-    ?>
+    ]) ?>
 </div>

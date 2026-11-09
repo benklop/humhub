@@ -1,54 +1,43 @@
 <?php
 
-use humhub\compat\CActiveForm;
-use yii\helpers\Url;
-use humhub\libs\Html;
+use humhub\helpers\Html;
+use humhub\modules\user\models\ProfileFieldCategory;
+use humhub\widgets\bootstrap\Button;
+use humhub\widgets\bootstrap\Link;
+use humhub\widgets\form\ActiveForm;
+use humhub\widgets\form\SortOrderField;
+
+/* @var $category ProfileFieldCategory */
 ?>
 <div class="panel-body">
-    <div class="pull-right">
-        <?= Html::backButton(['index'], ['label' => Yii::t('AdminModule.base', 'Back to overview'), 'class' => 'pull-right']); ?>
-    </div>   
+    <div class="float-end">
+        <?= Html::backButton(['index'], ['label' => Yii::t('AdminModule.base', 'Back to overview'), 'class' => 'float-end']); ?>
+    </div>
 
-    <?php if (!$category->isNewRecord) : ?>
-        <h4><?= Yii::t('AdminModule.views_userprofile_editCategory', 'Edit profile category'); ?></h4>
+    <?php if (!$category->isNewRecord): ?>
+        <h4><?= Yii::t('AdminModule.user', 'Edit profile category'); ?></h4>
     <?php else: ?>
-        <h4><?= Yii::t('AdminModule.views_userprofile_editCategory', 'Create new profile category'); ?></h4>
+        <h4><?= Yii::t('AdminModule.user', 'Create new profile category'); ?></h4>
     <?php endif; ?>
     <br>
 
-    <?php $form = CActiveForm::begin(); ?>
+    <?php $form = ActiveForm::begin(['acknowledge' => true]); ?>
 
-    <div class="form-group">
-        <?= $form->labelEx($category, 'title') ?>
-        <?= $form->textField($category, 'title', ['class' => 'form-control']); ?>
-        <?= $form->error($category, 'title'); ?>
-    </div>
-
-    <div class="form-group">
-        <?= $form->labelEx($category, 'description') ?>
-        <?= $form->textArea($category, 'description', ['class' => 'form-control', 'rows' => '5']); ?>
-        <?= $form->error($category, 'description'); ?>
-    </div>
-
-    <div class="form-group">
-        <?= $form->labelEx($category, 'sort_order') ?>
-        <?= $form->textField($category, 'sort_order', ['class' => 'form-control']); ?>
-        <?= $form->error($category, 'sort_order'); ?>
-    </div>
-
-    <div class="form-group">
-        <?= $form->labelEx($category, 'translation_category') ?>
-        <?= $form->textField($category, 'translation_category', ['class' => 'form-control']); ?>
-        <?= $form->error($category, 'translation_category'); ?>
-    </div>
+    <?= $form->field($category, 'title') ?>
+    <?= $form->field($category, 'description')->textarea(['rows' => 5]) ?>
+    <?= $form->field($category, 'sort_order')->widget(SortOrderField::class) ?>
+    <?= $form->field($category, 'translation_category') ?>
 
     <hr>
 
-    <?= Html::submitButton(Yii::t('AdminModule.views_userprofile_editCategory', 'Save'), ['class' => 'btn btn-primary', 'data-ui-loader' => ""]); ?>
+    <?= Button::save()->submit() ?>
 
-    <?php if (!$category->isNewRecord && !$category->is_system) : ?>
-        <?= Html::a(Yii::t('AdminModule.views_userprofile_editCategory', 'Delete'), Url::to(['delete-category', 'id' => $category->id]), ['class' => 'btn btn-danger']); ?>
+    <?php if (!$category->isNewRecord && !$category->is_system): ?>
+        <?= Link::danger(Yii::t('AdminModule.user', 'Delete'))
+            ->post(['delete-category', 'id' => $category->id])
+            ->confirm()
+            ->right() ?>
     <?php endif; ?>
 
-    <?php CActiveForm::end(); ?>
+    <?php ActiveForm::end(); ?>
 </div>

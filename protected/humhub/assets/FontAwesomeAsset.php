@@ -8,7 +8,7 @@
 
 namespace humhub\assets;
 
-use yii\web\AssetBundle;
+use humhub\components\assets\AssetBundle;
 
 /**
  * Fontawesome
@@ -17,11 +17,20 @@ use yii\web\AssetBundle;
  */
 class FontAwesomeAsset extends AssetBundle
 {
+    /**
+     * @inheritdoc
+     */
+    public $sourcePath = '@npm/font-awesome';
 
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/fontawesome';
+    public $publishOptions = [
+        'only' => [
+            'css/font-awesome.min.css',
+            'fonts/*',
+        ],
+    ];
 
     /**
      * @inheritdoc

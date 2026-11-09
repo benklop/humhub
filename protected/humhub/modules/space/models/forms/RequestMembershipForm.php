@@ -12,18 +12,19 @@ use yii\base\Model;
  */
 class RequestMembershipForm extends Model
 {
-
     public $space_id;
     public $message;
+    public $options;
 
     /**
      * Declares the validation rules.
      */
     public function rules()
     {
-        return array(
-            array('message', 'required'),
-        );
+        return [
+            ['message', 'required'],
+            ['options', 'safe'],
+        ];
     }
 
     /**
@@ -33,9 +34,9 @@ class RequestMembershipForm extends Model
      */
     public function attributeLabels()
     {
-        return array(
-            'message' => Yii::t('SpaceModule.forms_SpaceMembershipForm', 'Application message'),
-        );
+        return [
+            'message' => Yii::t('SpaceModule.base', 'Your Message'),
+        ];
     }
 
 }

@@ -1,31 +1,40 @@
 <?php
 
-use yii\bootstrap\Html;
-use humhub\widgets\DataSaved;
-use humhub\widgets\ActiveForm;
+use humhub\modules\user\models\forms\AccountDelete;
+use humhub\widgets\bootstrap\Alert;
+use humhub\widgets\bootstrap\Button;
+use humhub\widgets\form\ActiveForm;
+
+/* @var AccountDelete $model */
 ?>
 <?php $this->beginContent('@user/views/account/_userProfileLayout.php') ?>
-<?php if ($isSpaceOwner) : ?>
-    <?php echo Yii::t('UserModule.views_account_delete', 'Sorry, as an owner of a workspace you are not able to delete your account!<br />Please assign another owner or delete them.'); ?>
+
+<strong><?= Yii::t('UserModule.account', 'Are you sure that you want to delete your account?') ?></strong>
+<br>
+<br>
+<?= Alert::danger(Yii::t('UserModule.account', 'All your personal data will be irrevocably deleted.'))->closeButton(false) ?>
+
+<?php $form = ActiveForm::begin() ?>
+
+<?php if ($model->isAttributeRequired('currentPassword')): ?>
+    <?= $form->field($model, 'currentPassword')->passwordInput([
+        'maxlength' => 45,
+        'placeholder' => Yii::t('UserModule.account', 'Enter your password to continue'),
+        'autocomplete' => 'current-password',
+    ]) ?>
 <?php else: ?>
-    <?php echo Yii::t('UserModule.views_account_delete', 'Are you sure, that you want to delete your account?<br />All your published content will be removed! '); ?>
-    <br />
-    <br />
+    <?= $form->field($model, 'currentPassword')->hiddenInput()->label(false); ?>
+<?php endif ?>
 
-    <?php $form = ActiveForm::begin(); ?>
+<br>
 
-    <?php if ($model->isAttributeRequired('currentPassword')): ?>
-        <?php echo $form->field($model, 'currentPassword')->passwordInput(['maxlength' => 45, 'placeholder' => Yii::t('UserModule.views_account_delete', 'Enter your password to continue')])->label(false); ?>
-    <?php else: ?>
-        <?php echo $form->field($model, 'currentPassword')->hiddenInput()->label(false); ?>
-    <?php endif; ?>
+<?= Button::danger(Yii::t('UserModule.account', 'Delete account'))
+    ->confirm(
+        Yii::t('UserModule.account', 'Are you sure that you want to delete your account?'),
+        Yii::t('UserModule.account', 'All your personal data will be irrevocably deleted.'),
+    )
+    ->submit() ?>
 
-    <?php echo Html::submitButton(Yii::t('UserModule.views_account_delete', 'Delete account'), array('class' => 'btn btn-danger', 'data-ui-loader' => '')); ?>
-    <?php echo DataSaved::widget(); ?>
+<?php ActiveForm::end() ?>
 
-    <?php ActiveForm::end(); ?>
-
-<?php endif; ?>
-<?php $this->endContent(); ?>
-
-
+<?php $this->endContent() ?>

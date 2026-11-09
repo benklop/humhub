@@ -8,7 +8,7 @@
 
 namespace humhub\assets;
 
-use yii\web\AssetBundle;
+use humhub\components\assets\AssetBundle;
 use yii\web\View;
 
 /**
@@ -18,26 +18,23 @@ use yii\web\View;
  */
 class PjaxAsset extends AssetBundle
 {
-
-    public $jsOptions = ['position' => View::POS_HEAD];
+    /**
+     * @inheritdoc
+     */
+    public $sourcePath = '@humhub/resources';
 
     /**
      * @inheritdoc
      */
-    public $basePath = '@webroot-static';
+    public $defer = false;
 
     /**
      * @inheritdoc
      */
-    public $baseUrl = '@web-static';
+    public $jsPosition = View::POS_HEAD;
 
     /**
      * @inheritdoc
      */
     public $js = ['js/jquery.pjax.modified.js'];
-
-    public $depends = [
-        //'yii\web\YiiAsset',
-    ];
-
 }

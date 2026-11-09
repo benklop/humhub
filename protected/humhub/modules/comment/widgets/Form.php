@@ -8,46 +8,77 @@
 
 namespace humhub\modules\comment\widgets;
 
+use humhub\components\Widget;
+use humhub\modules\comment\helpers\IdHelper;
+use humhub\modules\comment\models\Comment as CommentModel;
+use humhub\modules\comment\Module;
+use humhub\modules\content\models\Content;
+use humhub\modules\file\handler\FileHandlerCollection;
 use Yii;
+use yii\helpers\Url;
 
-/**
- * This widget is used include the comments functionality to a wall entry.
- *
- * Normally it shows a excerpt of all comments, but provides the functionality
- * to show all comments.
- *
- * @since 0.5
- */
-class Form extends \yii\base\Widget
+class Form extends Widget
 {
+    public ?Content $content = null;
+    public ?CommentModel $parentComment = null;
 
     /**
-     * Content Object
+     * @var Comment|null can be provided if comment validation failed, otherwise a dummy model will be created
      */
-    public $object;
+    public $model;
+
+    /**
+     * @var string
+     */
+    public $mentioningUrl = '/user/mentioning/content';
+
+    /**
+     * @var bool
+     */
+    public $isHidden;
+
+    /**
+     * @inheritdoc
+     */
+    public function init()
+    {
+        parent::init();
+
+        if ($this->isHidden === null) {
+            // Hide the comment form for sub comments until the button is clicked
+            $this->isHidden = ($this->parentComment !== null);
+        }
+    }
 
     /**
      * Executes the widget.
      */
     public function run()
     {
-
         if (Yii::$app->user->isGuest) {
-            return;
+            return '';
         }
 
-        if (!Yii::$app->getModule('comment')->canComment($this->object->content)) {
-            return;
+        /** @var Module $module */
+        $module = Yii::$app->getModule('comment');
+
+        if (!$module->canComment($this->content)) {
+            return '';
         }
-        
-        $modelName = $this->object->content->object_model;
-        $modelId = $this->object->content->object_id;
+
+        if (!$this->model) {
+            $this->model = new CommentModel();
+            $this->model->content_id = $this->content->id;
+            $this->model->parent_comment_id = $this->parentComment?->id;
+        }
 
         return $this->render('form', [
-            'modelName' => $modelName,
-            'modelId' => $modelId,
-            'id' => $this->object->getUniqueId(),
+            'id' => IdHelper::getId($this->content, $this->parentComment),
+            'model' => $this->model,
+            'isNestedComment' => ($this->parentComment !== null),
+            'mentioningUrl' => Url::to([$this->mentioningUrl, 'id' => $this->content->id]),
+            'isHidden' => $this->isHidden,
+            'fileHandlers' => FileHandlerCollection::getByType([FileHandlerCollection::TYPE_IMPORT, FileHandlerCollection::TYPE_CREATE]),
         ]);
     }
-
 }

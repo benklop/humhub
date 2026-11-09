@@ -18,19 +18,23 @@ use humhub\modules\content\models\Content;
  */
 class NewNotification extends LiveEvent
 {
-
     /**
      * @var int the id of the new notification
      */
     public $notificationId;
-    
+
     /**
-     * @var string text representation used for frotnend desktop notifications 
+     * @var string related notification group
+     */
+    public $notificationGroup;
+
+    /**
+     * @var string text representation used for frotnend desktop notifications
      */
     public $text;
-    
+
     /**
-     * @var int determines if desktop notification has already been sent. 
+     * @var int determines if desktop notification has already been sent.
      */
     public $ts;
 
@@ -42,5 +46,4 @@ class NewNotification extends LiveEvent
         parent::init();
         $this->visibility = Content::VISIBILITY_OWNER;
     }
-
 }

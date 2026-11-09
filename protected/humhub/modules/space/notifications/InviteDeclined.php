@@ -8,9 +8,9 @@
 
 namespace humhub\modules\space\notifications;
 
-use Yii;
-use yii\bootstrap\Html;
+use humhub\helpers\Html;
 use humhub\modules\notification\components\BaseNotification;
+use Yii;
 
 /**
  * SpaceInviteDeclinedNotification is sent to the originator of the invite to
@@ -21,27 +21,26 @@ use humhub\modules\notification\components\BaseNotification;
  */
 class InviteDeclined extends BaseNotification
 {
+    /**
+     * @inheritdoc
+     */
+    public $moduleId = 'space';
 
     /**
      * @inheritdoc
      */
-    public $moduleId = "space";
+    public $viewName = 'inviteDeclined';
 
     /**
      * @inheritdoc
-     */
-    public $viewName = "inviteDeclined";
-
-    /**
-     *  @inheritdoc
      */
     public function category()
     {
-        return new SpaceMemberNotificationCategory;
+        return new SpaceMemberNotificationCategory();
     }
 
     /**
-     *  @inheritdoc
+     * @inheritdoc
      */
     public function getSpace()
     {
@@ -50,7 +49,7 @@ class InviteDeclined extends BaseNotification
 
     public function getMailSubject()
     {
-        return strip_tags($this->html());
+        return $this->getInfoText($this->originator->displayName, $this->getSpace()->name);
     }
 
     /**
@@ -58,12 +57,18 @@ class InviteDeclined extends BaseNotification
      */
     public function html()
     {
+        return $this->getInfoText(
+            Html::tag('strong', Html::encode($this->originator->displayName)),
+            Html::tag('strong', Html::encode($this->getSpace()->name)),
+        );
+    }
+
+    private function getInfoText($displayName, $spaceName)
+    {
         return Yii::t('SpaceModule.notification', '{displayName} declined your invite for the space {spaceName}', [
-                    '{displayName}' => Html::tag('strong', Html::encode($this->originator->displayName)),
-                    '{spaceName}' => Html::tag('strong', Html::encode($this->getSpace()->name))
+            '{displayName}' => $displayName,
+            '{spaceName}' => $spaceName,
         ]);
     }
 
 }
-
-?>

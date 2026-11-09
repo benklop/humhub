@@ -2,10 +2,11 @@
 
 namespace humhub\modules\dashboard\widgets;
 
-use Yii;
-use humhub\modules\stream\widgets\StreamViewer;
 use humhub\components\Widget;
 use humhub\modules\content\components\ContentContainerActiveRecord;
+use humhub\modules\post\widgets\Form;
+use humhub\modules\stream\widgets\StreamViewer;
+use Yii;
 
 class DashboardContent extends Widget
 {
@@ -15,26 +16,29 @@ class DashboardContent extends Widget
     public $contentContainer;
 
     /**
-     * @var boolean
+     * @var bool
      */
     public $showProfilePostForm = false;
 
     public function run()
     {
         if ($this->showProfilePostForm) {
-            echo \humhub\modules\post\widgets\Form::widget(['contentContainer' => $this->contentContainer]);
+            echo Form::widget(['contentContainer' => $this->contentContainer]);
         }
 
         if ($this->contentContainer === null) {
-            $messageStreamEmpty = Yii::t('DashboardModule.views_dashboard_index_guest', '<b>No public contents to display found!</b>');
+            $messageStreamEmpty = Yii::t('DashboardModule.base', '<b>No public contents to display found!</b>');
         } else {
-            $messageStreamEmpty = Yii::t('DashboardModule.views_dashboard_index', '<b>Your dashboard is empty!</b><br>Post something on your profile or join some spaces!');
+            $messageStreamEmpty = Yii::t('DashboardModule.base', '<b>Your dashboard is empty!</b><br>Post something on your profile or join some spaces!');
         }
 
         echo StreamViewer::widget([
+            'options' => ['class' => 'dashboard-wall-stream'],
             'streamAction' => '//dashboard/dashboard/stream',
-            'showFilters' => false,
-            'messageStreamEmpty' => $messageStreamEmpty
+            'showFilters' => (bool) Yii::$app->getModule('dashboard')->settings->get('showProfilePostForm')
+                || (!is_null(Yii::$app->request->getQueryParam('filters_visible')) && !empty(Yii::$app->request->getQueryParam('includes')))
+                || !empty(Yii::$app->request->getQueryParam('topics')),
+            'messageStreamEmpty' => $messageStreamEmpty,
         ]);
     }
 }

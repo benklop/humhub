@@ -8,7 +8,10 @@
 
 namespace humhub\modules\notification\widgets;
 
+use humhub\modules\notification\controllers\ListController;
+use humhub\widgets\JsWidget;
 use Yii;
+use yii\helpers\Url;
 
 /**
  * Notificaiton overview widget.
@@ -16,8 +19,20 @@ use Yii;
  * @author buddha
  * @since 1.1
  */
-class Overview extends \yii\base\Widget
+class Overview extends JsWidget
 {
+    public $id = 'notification_widget';
+
+    public $jsWidget = 'notification.NotificationDropDown';
+
+    public function init()
+    {
+        $this->view->registerJsConfig('notification', [
+            'loadEntriesUrl' => Url::to(['/notification/list']),
+        ]);
+
+        parent::init();
+    }
 
     /**
      * @inheritdoc
@@ -25,14 +40,26 @@ class Overview extends \yii\base\Widget
     public function run()
     {
         if (Yii::$app->user->isGuest) {
-            return;
+            return '';
         }
 
         return $this->render('overview', [
-            'update' => \humhub\modules\notification\controllers\ListController::getUpdates(),
-            'unseenCount' => \humhub\modules\notification\models\Notification::findUnseen()->count()]);
+            'options' => $this->getOptions(),
+        ]);
     }
 
-}
+    public function getAttributes()
+    {
+        return [
+            'id' => 'notification_widget',
+            'class' => "btn-group",
+        ];
+    }
 
-?>
+    public function getData()
+    {
+        return [
+            'ui-init' => ListController::getUpdates(),
+        ];
+    }
+}

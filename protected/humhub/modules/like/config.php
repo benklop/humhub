@@ -1,20 +1,22 @@
 <?php
 
-use humhub\components\ActiveRecord;
 use humhub\commands\IntegrityController;
-use humhub\modules\like\Module;
+use humhub\models\RecordMap;
+use humhub\modules\content\components\ContentActiveRecord;
+use humhub\modules\content\models\Content;
 use humhub\modules\user\models\User;
 use humhub\modules\content\widgets\WallEntryLinks;
 
 return [
     'id' => 'like',
-    'class' => humhub\modules\like\Module::className(),
+    'class' => humhub\modules\like\Module::class,
     'isCoreModule' => true,
-    'events' => array(
-        array('class' => User::className(), 'event' => User::EVENT_BEFORE_DELETE, 'callback' => array('humhub\modules\like\Events', 'onUserDelete')),
-        array('class' => ActiveRecord::className(), 'event' => ActiveRecord::EVENT_BEFORE_DELETE, 'callback' => array('humhub\modules\like\Events', 'onActiveRecordDelete')),
-        array('class' => IntegrityController::className(), 'event' => IntegrityController::EVENT_ON_RUN, 'callback' => array('humhub\modules\like\Events', 'onIntegrityCheck')),
-        array('class' => WallEntryLinks::className(), 'event' => WallEntryLinks::EVENT_INIT, 'callback' => array('humhub\modules\like\Events', 'onWallEntryLinksInit')),
-    ),
+    'events' => [
+        ['class' => User::class, 'event' => User::EVENT_BEFORE_DELETE, 'callback' => ['humhub\modules\like\Events', 'onUserDelete']],
+        ['class' => RecordMap::class, 'event' => RecordMap::EVENT_BEFORE_DELETE, 'callback' => ['humhub\modules\like\Events', 'onRecordMapDelete']],
+        ['class' => ContentActiveRecord::class, 'event' => ContentActiveRecord::EVENT_BEFORE_DELETE, 'callback' => ['humhub\modules\like\Events', 'onContentDelete']],
+        ['class' => Content::class, 'event' => Content::EVENT_BEFORE_HARD_DELETE, 'callback' => ['humhub\modules\like\Events', 'onContentHardDelete']],
+        ['class' => IntegrityController::class, 'event' => IntegrityController::EVENT_ON_RUN, 'callback' => ['humhub\modules\like\Events', 'onIntegrityCheck']],
+        ['class' => WallEntryLinks::class, 'event' => WallEntryLinks::EVENT_INIT, 'callback' => ['humhub\modules\like\Events', 'onWallEntryLinksInit']],
+    ],
 ];
-?>

@@ -8,10 +8,16 @@
 
 namespace humhub\modules\file\converter;
 
-use Yii;
+use Exception;
+use humhub\helpers\Html;
+use humhub\modules\admin\models\Log;
+use humhub\modules\file\libs\ImageHelper;
 use humhub\modules\file\models\File;
-use humhub\modules\file\libs\ImageConverter;
-use humhub\libs\Html;
+use humhub\modules\file\Module;
+use Imagine\Image\Format;
+use Imagine\Image\ImageInterface;
+use Yii;
+use yii\imagine\Image;
 
 /**
  * PreviewImage Converter
@@ -21,39 +27,57 @@ use humhub\libs\Html;
  */
 class PreviewImage extends BaseConverter
 {
+    /**
+     * @var ImageInterface
+     */
+    private $_image;
 
-    public $imageInfo;
+    /**
+     * @var ImageInterface
+     */
+    private $_imageFile;
+
 
     /**
      * @inheritdoc
      */
     public function init()
     {
-        $this->options['mode'] = 'max';
-        $maxPreviewImageWidth = Yii::$app->getModule('file')->settings->get('maxPreviewImageWidth');
-        $maxPreviewImageHeight = Yii::$app->getModule('file')->settings->get('maxPreviewImageHeight');
+        /** @var Module $module */
+        $module = Yii::$app->getModule('file');
 
-        $this->options['width'] = $maxPreviewImageWidth ? $maxPreviewImageWidth : 200;
-        $this->options['height'] = $maxPreviewImageHeight ? $maxPreviewImageHeight : 200;
+        $this->options['width'] = $module->imagePreviewMaxWidth;
+        $this->options['height'] = $module->imagePreviewMaxHeight;
 
         parent::init();
     }
 
+
+    /**
+     * @inheritdoc
+     */
+    public function getId()
+    {
+        return 'preview-image';
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function render($file = null)
     {
         if ($file) {
             $this->applyFile($file);
         }
-        
-        // Provide the natural height so the browser will include a placeholder height. Todo: smooth image loading
-        return \yii\helpers\Html::img($this->getUrl(), ['class' => 'animated fadeIn', 'height' => $this->height, 'alt' => $this->getAltText()]);
+
+        return Html::img($this->getUrl(), ['class' => 'animated fadeIn', 'alt' => $this->getAltText()]);
     }
-    
+
     protected function getAltText($file = null)
     {
         if ($file) {
             return Html::encode($file->file_name);
-        } else if($this->file) {
+        } elseif ($this->file) {
             return Html::encode($this->file->file_name);
         }
         return '';
@@ -64,11 +88,36 @@ class PreviewImage extends BaseConverter
      */
     protected function convert($fileName)
     {
-        if (!is_file($this->file->store->get($fileName))) {
-            ImageConverter::Resize($this->file->store->get(), $this->file->store->get($fileName), $this->options);
-        }
+        try {
+            if (!$this->file->store->has($fileName)) {
 
-        $this->imageInfo = @getimagesize($this->file->store->get($fileName));
+                $image = Image::getImagine()->load($this->file->store->getContent());
+                ImageHelper::fixJpegOrientation($image, $this->file);
+
+                if ($image->getSize()->getHeight() > $this->options['height']) {
+                    $image->resize($image->getSize()->heighten($this->options['height']));
+                }
+
+                if ($image->getSize()->getWidth() > $this->options['width']) {
+                    $image->resize($image->getSize()->widen($this->options['width']));
+                }
+
+                $options = ['format' => 'png'];
+                if (!($image instanceof \Imagine\Gd\Image) && count($image->layers()) > 1) {
+                    $options = ['format' => 'gif', 'animated' => true];
+                }
+
+
+                $this->file->store->setContent($image->get(Format::ID_PNG, $options), $fileName);
+            }
+        } catch (Exception $ex) {
+            $message = 'Could not convert file with id ' . $this->file->id . '. Error: ' . $ex->getMessage();
+            $count = Log::find()->where(['message' => $message])->count();
+
+            if ($count == 0) {
+                Yii::warning($message);
+            }
+        }
     }
 
     /**
@@ -76,57 +125,16 @@ class PreviewImage extends BaseConverter
      */
     protected function canConvert(File $file)
     {
-        $originalFile = $file->store->get();
-
-        if (substr($file->mime_type, 0, 6) !== 'image/' || !is_file($originalFile)) {
-            return false;
-        }
-
-        $imageInfo = @getimagesize($originalFile);
-
-        // Check if we got any dimensions - invalid image
-        if (!isset($imageInfo[0]) || !isset($imageInfo[1])) {
-            return false;
-        }
-
-        // Check if image type is supported
-        if ($imageInfo[2] != IMAGETYPE_PNG && $imageInfo[2] != IMAGETYPE_JPEG && $imageInfo[2] != IMAGETYPE_GIF) {
+        if (!str_starts_with($file->mime_type, 'image/') || !$file->store->has()) {
             return false;
         }
 
         return true;
     }
 
-    public function getDimensions()
-    {
-        if (!$this->imageInfo || !isset($this->imageInfo[3])) {
-            return;
-        }
-
-        return $this->imageInfo[3];
-    }
-
-    public function getWidth()
-    {
-        if (!$this->imageInfo || !isset($this->imageInfo[0])) {
-            return 'auto';
-        }
-
-        return $this->imageInfo[0];
-    }
-
-    public function getHeight()
-    {
-        if (!$this->imageInfo || !isset($this->imageInfo[1])) {
-            return 'auto';
-        }
-
-        return $this->imageInfo[1];
-    }
-
     /**
      * Returns the gallery link to the original file
-     * 
+     *
      * @param array $htmlOptions optional link html options
      * @return string the link
      */
@@ -134,5 +142,4 @@ class PreviewImage extends BaseConverter
     {
         return Html::a($this->render(), $this->file->getUrl(), array_merge($htmlOptions, ['data-ui-gallery' => 'gallery-' . $this->file->guid]));
     }
-
 }

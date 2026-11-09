@@ -8,6 +8,12 @@
 
 namespace humhub\modules\admin\widgets;
 
+use humhub\components\Widget;
+use humhub\modules\web\security\helpers\Security;
+use Twig\Environment;
+use Twig\Extension\SandboxExtension;
+use Twig\Loader\ArrayLoader;
+use Twig\Sandbox\SecurityPolicy;
 use Yii;
 
 /**
@@ -16,15 +22,22 @@ use Yii;
  * @since 1.1
  * @author Luke
  */
-class TrackingWidget extends \humhub\components\Widget
+class TrackingWidget extends Widget
 {
-
     /**
      * @inheritdoc
      */
     public function run()
     {
-        return Yii::$app->settings->get('trackingHtmlCode');
+        $trackingCode = Yii::$app->settings->get('trackingHtmlCode');
+
+        if (!$trackingCode) {
+            return '';
+        }
+
+        $twig = new Environment(new ArrayLoader(['trackingHtmlCode' => $trackingCode]));
+        $twig->addExtension(new SandboxExtension(new SecurityPolicy(['if'], ['escape']), true));
+        return $twig->render('trackingHtmlCode', ['nonce' => Security::getNonce()]);
     }
 
 }

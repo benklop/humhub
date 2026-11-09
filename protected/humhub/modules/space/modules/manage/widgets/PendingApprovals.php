@@ -8,8 +8,8 @@
 
 namespace humhub\modules\space\modules\manage\widgets;
 
-
-use \yii\base\Widget;
+use humhub\modules\space\models\Space;
+use yii\base\Widget;
 
 /**
  * PendingApprovals show open member approvals to admin in sidebar
@@ -19,9 +19,8 @@ use \yii\base\Widget;
  */
 class PendingApprovals extends Widget
 {
-
     /**
-     * @var \humhub\modules\space\models\Space
+     * @var Space
      */
     public $space;
 
@@ -51,5 +50,3 @@ class PendingApprovals extends Widget
     }
 
 }
-
-?>

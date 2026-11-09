@@ -2,9 +2,9 @@
 
 namespace humhub\modules\space\widgets;
 
+use humhub\modules\content\widgets\ContentContainerPickerField;
+use humhub\modules\space\models\Space;
 use Yii;
-use humhub\widgets\BasePickerField;
-use yii\helpers\Html;
 
 /**
  * Mutliselect input field for selecting space guids.
@@ -13,20 +13,19 @@ use yii\helpers\Html;
  * @since 1.2
  * @author buddha
  */
-class SpacePickerField extends BasePickerField
+class SpacePickerField extends ContentContainerPickerField
 {
-    /**
-     * @inheritdoc
-     * Min guids string value of Space model equal 2
-     */
-    public $minInput = 2;
-
+    public $itemClass = Space::class;
     /**
      * @inheritdoc
      */
     public $defaultRoute = '/space/browse/search-json';
-    public $itemClass = \humhub\modules\space\models\Space::class;
-    public $itemKey = 'guid';
+
+    /**
+     * @inheritdoc
+     * Min guids string value
+     */
+    public $minInput = 2;
 
     /**
      * @inheritdoc
@@ -35,22 +34,15 @@ class SpacePickerField extends BasePickerField
     {
         $result = parent::getData();
         $allowMultiple = $this->maxSelection !== 1;
-        $result['placeholder'] = Yii::t('SpaceModule.widgets_SpacePickerField', 'Select {n,plural,=1{space} other{spaces}}', ['n' => ($allowMultiple) ? 2 : 1]);
-        $result['placeholder-more'] = Yii::t('SpaceModule.widgets_SpacePickerField', 'Add Space');
-        $result['no-result'] = Yii::t('SpaceModule.widgets_SpacePickerField', 'No spaces found for the given query');
+        $result['placeholder'] = Yii::t('SpaceModule.chooser', 'Select {n,plural,=1{space} other{spaces}}', ['n' => ($allowMultiple) ? 2 : 1]);
+        $result['placeholder-more'] = Yii::t('SpaceModule.chooser', 'Add Space');
+        $result['no-result'] = Yii::t('SpaceModule.chooser', 'No spaces found for the given query');
 
         if ($this->maxSelection) {
-            $result['maximum-selected'] = Yii::t('SpaceModule.widgets_SpacePickerField', 'This field only allows a maximum of {n,plural,=1{# space} other{# spaces}}', ['n' => $this->maxSelection]);
+            $result['maximum-selected'] = Yii::t('SpaceModule.chooser', 'This field only allows a maximum of {n,plural,=1{# space} other{# spaces}}', ['n' => $this->maxSelection]);
         }
-        return $result;
-    }
 
-    /**
-     * @inheritdoc
-     */
-    protected function getItemText($item)
-    {
-        return Html::encode($item->getDisplayName());
+        return $result;
     }
 
     /**
@@ -58,7 +50,9 @@ class SpacePickerField extends BasePickerField
      */
     protected function getItemImage($item)
     {
-        return Image::widget(["space" => $item, "width" => 24]);
+        return Image::widget([
+            'space' => $item,
+            'width' => 24,
+        ]);
     }
-
 }

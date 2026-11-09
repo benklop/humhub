@@ -1,59 +1,86 @@
 humhub.module('comment', function (module, require, $) {
     var Content = require('content').Content;
     var Widget = require('ui.widget').Widget;
-    var object = require('util').object;
     var client = require('client');
     var loader = require('ui.loader');
     var additions = require('ui.additions');
+    var i18n = require('i18n');
 
-    var Form = function (node, options) {
-        Widget.call(this, node, options);
-    };
+    module.requiredI18nCategories = ['CommentModule.base'];
 
-    object.inherits(Form, Widget);
+    var Form = Widget.extend();
 
     Form.prototype.submit = function (evt) {
         var that = this;
-        client.submit(evt, {dataType: 'html'}).then(function (response) {
-            that.addComment(response.html);
-            that.getInput().val('').trigger('autosize.resize');
-            that.getRichtext().$.addClass('atwho-placeholder').focus();
-            that.getRichtext().$.trigger('clear');
-            that.getUpload().reset();
-        }).catch(function (err) {
-            module.log.error(err, true);
+        client.submit(evt, {dataType: 'html'}).status({
+            200: function (response) {
+                var richText = that.getRichtext();
+                that.addComment(response.html);
+                that.getInput().val('').trigger('autosize.resize');
+                richText.$.trigger('clear');
+                that.getUpload().reset();
+                that.$.find('.is-invalid').removeClass('is-invalid');
+                that.$.find('.invalid-feedback').html('');
+            },
+            400: function (response) {
+                that.replace(response.html);
+            }
+        }).catch(function (e) {
+            module.log.error(e, true);
         });
     };
 
     Form.prototype.getRichtext = function () {
-        return Widget.instance(this.$.find('div.humhub-ui-richtext'));
+        return Widget.closest(this.$.find('div.humhub-ui-richtext'));
     };
 
     Form.prototype.addComment = function (html) {
-        var $html = $(html).hide();
-        additions.applyTo($html);
+        var $html = $(html);
+
+        // Filter out all script/links and text nodes
+        var $elements = $html.not('script, link').filter(function () {
+            return this.nodeType === 1; // filter out text nodes
+        });
+
+        // We use opacity because some additions require the actual size of the elements.
+        $elements.css('opacity', 0);
+
+        // call insert callback
         this.getCommentsContainer().append($html);
         this.incrementCommentCount(1);
-        $html.fadeIn();
+
+        // apply additions to elements and fade them in.
+        additions.applyTo($elements);
+
+        $elements.hide().css('opacity', 1).fadeIn('fast');
+
+        this.$.find('hr').css('display', 'inherit');
     };
-    
+
     Form.prototype.incrementCommentCount = function (count) {
         try {
-            var $controls = this.$.closest('.comment-container').siblings('.wall-entry-controls');
-            var $commentCount = $controls.find('.comment-count');
-            if($commentCount.length) {
-                var currentCount = $commentCount.data('count');
-                currentCount += count;
-                $commentCount.text(' ('+currentCount+')').show();
+            // Update the reply counter of the parent comment (for sub comments)
+            // and the total comment counter of the wall entry
+            var $roots = this.$.closest('[data-action-component="comment.Comment"]')
+                .add(this.$.closest('.stream-entry-addons'));
+
+            $roots.each(function () {
+                var $commentCount = $(this).find('.wall-entry-controls:first .comment-count');
+                if (!$commentCount.length) {
+                    return;
+                }
+
+                var currentCount = $commentCount.data('count') + count;
+                $commentCount.text(' (' + currentCount + ')').show();
                 $commentCount.data('count', currentCount);
-            }
-        } catch(e) {
-            module.log.error(e);
+            });
+        } catch (e) {
+            module.log.error(e, false);
         }
     };
 
     Form.prototype.getUpload = function () {
-        return Widget.instance(this.$.find('[name="files[]"]'));
+        return Widget.instance(this.$.find('.main_comment_upload'));
     };
 
     Form.prototype.getCommentsContainer = function () {
@@ -64,50 +91,95 @@ humhub.module('comment', function (module, require, $) {
         return this.$.find('textarea');
     };
 
-    var Comment = function (node) {
+    var Comment = Content.extend(function (node) {
         Content.call(this, node);
         additions.observe(this.$);
-    };
-
-    object.inherits(Comment, Content);
+    });
 
     Comment.prototype.edit = function (evt) {
         this.loader();
         var that = this;
         client.post(evt, {dataType: 'html'}).then(function (response) {
-            that.$.find('.comment_edit_content').replaceWith(response.html);
-            that.getRichtext().focus();
-            that.$.find('.comment-cancel-edit-link').show();
-            that.$.find('.comment-edit-link').hide();
+            that.setEditContent(response.html);
         }).finally(function () {
             that.loader(false);
         });
     };
 
-    Comment.prototype.getRichtext = function () {
-        return Widget.instance(this.$.find('div.humhub-ui-richtext'));
+    Comment.prototype.setEditContent = function (html) {
+        this.$.find('.comment_edit_content:first,.content_edit:first').replaceWith(html);
+        this.$.find('.comment-cancel-edit-link:first').show();
+        this.$.find('.comment-edit-link:first').hide();
     };
 
-    Comment.prototype.delete = function () {
-        this.super('delete', {modal: module.config.modal.delteConfirm}).then(function ($confirm) {
+    Comment.prototype.getRichtext = function () {
+        return Widget.instance(this.$.find('div.humhub-ui-richtext:first'));
+    };
+
+    Comment.prototype.delete = function (evt) {
+        var form = Widget.instance(this.$.parent().siblings('.comment_create'));
+        var hideHr = !this.isNestedComment() && form.$.length && !this.$.siblings('.single-comment').length;
+
+        // Deleting a comment also removes its sub comments from the total count
+        var subComments = this.isNestedComment()
+            ? 0
+            : (this.$.find('.wall-entry-controls:first .comment-count').data('count') || 0);
+
+        this.$.data('content-delete-url', evt.$trigger.data('content-delete-url'));
+
+        this.super('delete', {modal: {
+            header: i18n.t('CommentModule.base', '<strong>Confirm</strong> comment deleting'),
+            body: i18n.t('CommentModule.base', 'Do you really want to delete this comment?'),
+            confirmText: i18n.t('CommentModule.base', 'Delete'),
+            cancelText: i18n.t('CommentModule.base', 'Cancel')
+        }}).then(function ($confirm) {
             if ($confirm) {
-                module.log.success('success.delete');
+                module.log.success(i18n.t('CommentModule.base', 'Comment has been deleted'));
+                hideHr && form.$.find('hr').css('display', 'none');
+                form.incrementCommentCount(-1 - subComments);
             }
         }).catch(function (err) {
             module.log.error(err, true);
         });
     };
 
-    Comment.prototype.editSubmit = function (evt) {
-        var that = this;
-        client.submit(evt, {dataType: 'html'}).then(function (response) {
-            that.replace(response.html);
-            that.highlight();
-            that.$.find('.comment-cancel-edit-link').hide();
-            that.$.find('.comment-edit-link').show();
-            module.log.success('success.saved');
+    Comment.prototype.adminDelete = function (evt) {
+        var $form = this.$.parent().siblings('.comment_create');
+        var hideHr = !this.isNestedComment() && $form.length && !this.$.siblings('.single-comment').length;
+
+        this.$.data('content-delete-url', evt.$trigger.data('content-delete-url'));
+        this.$.data('admin-delete-modal-url', evt.$trigger.data('admin-delete-modal-url'));
+
+        this.super('adminDelete').then(function ($confirm) {
+            if ($confirm) {
+                module.log.success(i18n.t('CommentModule.base', 'Comment has been deleted'));
+                if (hideHr) {
+                    $form.find('hr').css('display', 'none');
+                }
+            }
         }).catch(function (err) {
             module.log.error(err, true);
+        });
+    }
+
+    Comment.prototype.isNestedComment = function () {
+        return this.$.closest('.nested-comments-root').length !== 0;
+    };
+
+    Comment.prototype.editSubmit = function (evt) {
+        var that = this;
+        client.submit(evt, {dataType: 'html'}).status({
+            200: function (response) {
+                that.replace(response.html);
+                that.highlight();
+                that.$.find('.comment-cancel-edit-link:first').hide();
+                that.$.find('.comment-edit-link:first').show();
+            },
+            400: function (response) {
+                that.setEditContent(response.html);
+            }
+        }).catch(function (e) {
+            module.log.error(e, true);
         });
     };
 
@@ -123,8 +195,8 @@ humhub.module('comment', function (module, require, $) {
         this.loader();
         client.html(evt).then(function (response) {
             that.replace(response.html);
-            that.$.find('.comment-cancel-edit-link').hide();
-            that.$.find('.comment-edit-link').show();
+            that.$.find('.comment-cancel-edit-link:first').hide();
+            that.$.find('.comment-edit-link:first').show();
         }).catch(function (err) {
             module.log.error(err, true);
         }).finally(function () {
@@ -133,13 +205,12 @@ humhub.module('comment', function (module, require, $) {
     };
 
     Comment.prototype.highlight = function () {
-        additions.highlight(this.$.find('.comment-message'));
+        additions.highlight(this.$.find('.comment-message:first'));
     };
 
     Comment.prototype.loader = function ($show) {
-        var $loader = this.$.find('.comment-entry-loader');
+        var $loader = this.$.find('.comment-entry-loader:first');
         if ($show === false) {
-            this.$.find('.preferences').show();
             loader.reset($loader);
             return;
         }
@@ -149,20 +220,19 @@ humhub.module('comment', function (module, require, $) {
             'css': {
                 padding: '2px',
                 width: '60px'
-
             }
         });
-
-        this.$.find('.preferences').hide();
     };
 
-    var showAll = function (evt) {
-        client.post(evt, {dataType: 'html'}).then(function (response) {
-            var $container = evt.$trigger.parent();
-            $container.html(response.html);
-            additions.applyTo($container);
+    Comment.prototype.showBlocked = function (evt) {
+        var that = this;
+        that.loader();
+        client.html(evt).then(function (response) {
+            that.replace(response.html);
         }).catch(function (err) {
             module.log.error(err, true);
+        }).finally(function () {
+            that.loader(false);
         });
     };
 
@@ -172,46 +242,101 @@ humhub.module('comment', function (module, require, $) {
             'css': {
                 padding: '2px',
                 width: '60px'
-
             }
         });
         client.post(evt, {dataType: 'html'}).then(function (response) {
             var $container = evt.$trigger.closest('.comment');
             var $html = $(response.html);
-            $container.prepend($html);
+            evt.$trigger.data('direction') === 'previous'
+                ? $container.prepend($html)
+                : $container.append($html);
             evt.$trigger.closest('.showMore').remove();
             additions.applyTo($html);
+
+            // The focused link was just removed, move the focus to the loaded
+            // continuation link or the first loaded comment instead
+            var $focus = $html.filter('.showMore').find('a').first();
+            if (!$focus.length) {
+                $focus = $html.filter('.single-comment').first().attr('tabindex', '-1');
+            }
+            $focus.trigger('focus');
+
+            // Highlight currently searching keywords in the loaded comments
+            const contentSearchKeyword = $('.container-contents .form-search input[name=keyword]');
+            if (contentSearchKeyword.length) {
+                additions.highlightWords($html, contentSearchKeyword.val());
+            }
         }).catch(function (err) {
             module.log.error(err, true);
             loader.unset(evt.$trigger);
         });
     };
 
-    var init = function () {
-        $(document).on('mouseover', '.comment .media', function () {
-            var $this = $(this);
-            var element = $this.find('.preferences');
-            if (!loader.is($this.find('.comment-entry-loader'))) {
-                element.show();
-            }
-        });
+    function toggleComment(target, isSlideToggle) {
+        var visible = target.is(':visible');
 
-        $(document).on('mouseout', '.comment .media', function () {
-            // find dropdown menu
-            var element = $(this).find('.preferences');
+        // Comments are shown but form is not visible yet --> Toggle form only
+        if (visible && !target.children('.comment_create').is(':visible')) {
+            target.children('.comment_create').slideToggle(undefined, function () {
+                target.find('.humhub-ui-richtext').trigger('focus');
+            });
+            return;
+        }
 
-            // hide dropdown if it's not open
-            if (!element.find('li').hasClass('open')) {
-                element.hide();
-            }
-        });
+        var $form = target.children('.comment_create');
+
+        if (!target.find('.comment .single-comment').length && !target.closest('[data-action-component="comment.Comment"]').length) {
+            $form.find('hr').css('display', 'none');
+        }
+
+        $form.show();
+
+        if (isSlideToggle) {
+            target.slideToggle();
+        }
+
+        if (!visible && !window.comments_collapsed) {
+            target.find('.humhub-ui-richtext').trigger('focus');
+        }
+
+        if (!visible && window.comments_collapsed && !target.find('.comment > .single-comment').length) {
+            target.find('[data-action-click="comment.showMore"]').trigger('click');
+        }
+    }
+
+    var toggleCommentHandler = function (evt) {
+        var target;
+
+        // Only one level of subcomments allowed. If Replay button is pressed under second level of comments then toggle parent first level.
+        if (evt.$target.parents('.nested-comments-root').length < 2) {
+            //toggle child comment
+            target = evt.$target;
+            toggleComment(target, true);
+        } else {
+            //toggle parent comment
+            target = evt.$target.closest('.comment').closest('.comment-container');
+            toggleComment(target, false);
+            var richtext = Widget.instance(target.find('.comment_create:last .ProsemirrorEditor:first'));
+            var mentioning = require('ui.richtext.prosemirror').buildMentioning(evt.$target.closest('.single-comment').find('.comment-heading a'));
+            richtext.editor.init(mentioning);
+            richtext.$.trigger('focus');
+        }
+    };
+
+    var scrollActive = function (evt) {
+        evt.$trigger.closest('.richtext-create-input-group').addClass('scrollActive');
+    };
+
+    var scrollInactive = function (evt) {
+        evt.$trigger.closest('.richtext-create-input-group').removeClass('scrollActive');
     };
 
     module.export({
-        init: init,
         Comment: Comment,
         Form: Form,
-        showAll: showAll,
-        showMore: showMore
+        scrollActive: scrollActive,
+        scrollInactive: scrollInactive,
+        showMore: showMore,
+        toggleComment: toggleCommentHandler
     });
 });

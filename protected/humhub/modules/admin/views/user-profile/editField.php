@@ -1,51 +1,62 @@
 <?php
 
-use humhub\libs\Html;
-use yii\helpers\Url;
+use humhub\compat\HForm;
+use humhub\helpers\Html;
+use humhub\modules\user\models\ProfileField;
+use humhub\widgets\form\ActiveForm;
+
+/* @var $field ProfileField */
+/* @var $hForm HForm */
 ?>
 
-<div class="panel-body">
-    <div class="pull-right">
-        <?= Html::backButton(['index'], ['label' => Yii::t('AdminModule.base', 'Back to overview'), 'class' => 'pull-right']); ?>
+<div id="edit-profile-field-root" class="panel-body">
+    <div class="float-end">
+        <?= Html::backButton(['index'], ['label' => Yii::t('AdminModule.base', 'Back to overview'), 'class' => 'float-end']); ?>
     </div>
 
-    <?php if (!$field->isNewRecord) : ?>
-        <h4><?= Yii::t('AdminModule.views_userprofile_editField', 'Edit profile field'); ?></h4>
+    <?php if (!$field->isNewRecord): ?>
+        <h4><?= Yii::t('AdminModule.user', 'Edit profile field') ?></h4>
     <?php else: ?>
-        <h4><?= Yii::t('AdminModule.views_userprofile_editField', 'Create new profile field'); ?></h4>
+        <h4><?= Yii::t('AdminModule.user', 'Create new profile field') ?></h4>
     <?php endif; ?>
 
     <br>
 
-    <?php $form = \yii\widgets\ActiveForm::begin(); ?>
+    <?php $form = ActiveForm::begin(); ?>
     <?= $hForm->render($form); ?>
-    <?php \yii\widgets\ActiveForm::end(); ?>
+    <?php ActiveForm::end(); ?>
 </div>
 
-<script>
+<script <?= Html::nonce() ?>>
 
     /**
      * Switcher for Sub Forms (FormField Type)
      */
+    var checkFieldTypeFormState = function () {
+        $("#edit-profile-field-root .mb-3").show();
 
-    // Hide all Subforms for types
-    $(".fieldTypeSettings").hide();
-
-    showTypeSettings = $("#profilefield-field_type_class").val();
-    showTypeSettings = showTypeSettings.replace(/[\\]/g, '_');
-
-    // Display only the current selected type form
-    $("." + showTypeSettings).show();
-
-    $("#profilefield-field_type_class").on('change', function () {
-        // Hide all Subforms for types
+        // Hide all form type specific forms
         $(".fieldTypeSettings").hide();
 
-        // Show Current Selected
-        showTypeSettings = $("#profilefield-field_type_class").val();
-        showTypeSettings = showTypeSettings.replace(/[\\]/g, '_');
+        var $fieldTypeSelect = $("#profilefield-field_type_class");
+        var fieldTypeClass = $fieldTypeSelect.val();
+        var showTypeSettings = fieldTypeClass.replace(/[\\]/g, '_');
 
+        // Display only the current selected type form
         $("." + showTypeSettings).show();
+
+        var $selectedOption = $fieldTypeSelect.find(':selected');
+        var hideFields = $selectedOption.data('hiddenFields');
+
+        hideFields.forEach(function (value) {
+            $('.field-profilefield-' + value).hide();
+        })
+    };
+
+    checkFieldTypeFormState();
+
+    $("#profilefield-field_type_class").on('change', function () {
+        checkFieldTypeFormState();
     });
 
 </script>

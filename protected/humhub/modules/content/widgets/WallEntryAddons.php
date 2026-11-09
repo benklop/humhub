@@ -3,6 +3,7 @@
 namespace humhub\modules\content\widgets;
 
 use humhub\modules\content\components\ContentActiveRecord;
+use humhub\modules\content\widgets\stream\WallStreamEntryOptions;
 use humhub\widgets\BaseStack;
 use yii\helpers\ArrayHelper;
 
@@ -16,7 +17,6 @@ use yii\helpers\ArrayHelper;
  */
 class WallEntryAddons extends BaseStack
 {
-
     /**
      * Object derived from ContentActiveRecord
      *
@@ -25,31 +25,26 @@ class WallEntryAddons extends BaseStack
     public $object = null;
 
     /**
-     * Can be set to overwrite or extend the widget options of a given addon widget as:
-     *
-     * ```
-     * $widgetOptions = [
-     *      MyAddonWidget::class => [
-     *          'someOption' => false
-     *      ]
-     * ]
-     * ```
-     * @var array
-    */
-    public $widgetOptions = [];
+     * @var WallStreamEntryOptions
+     */
+    public $renderOptions;
 
     /**
      * @inheritdoc
      */
     public function addWidget($className, $params = [], $options = [])
     {
-        if(isset($this->widgetOptions[$className])) {
-            $params = ArrayHelper::merge($params, $this->widgetOptions[$className]);
+        if ($this->renderOptions) {
+            if ($this->renderOptions->isAddonDisabled($className)) {
+                return;
+            }
+
+            if (is_array($this->renderOptions->getAddonWidgetOptions($className))) {
+                $params = ArrayHelper::merge($params, $this->renderOptions->getAddonWidgetOptions($className));
+            }
         }
 
         parent::addWidget($className, $params, $options);
     }
 
 }
-
-?>

@@ -1,54 +1,81 @@
 <?php
 
-use yii\helpers\Html;
-use humhub\compat\CHtml;
+use humhub\components\View;
+use humhub\helpers\Html;
+use humhub\libs\DateHelper;
+use humhub\modules\admin\assets\LogAsset;
+use humhub\modules\admin\models\forms\LogFilterForm;
+use humhub\modules\admin\models\Log;
+use humhub\modules\ui\form\widgets\DatePicker;
+use humhub\modules\ui\form\widgets\MultiSelect;
+use humhub\widgets\form\ActiveForm;
+use yii\data\Pagination;
+use yii\helpers\Url;
+use yii\log\Logger;
 
-/* @var $logEntries \humhub\modules\admin\models\Log[] */
-/* @var $pagination \yii\data\Pagination */
+/* @var $logEntries Log[] */
+/* @var $pagination Pagination */
+/* @var $filter LogFilterForm */
+/* @var $this View */
+
+LogAsset::register($this);
+
+if ($filter->day) {
+    // Workaround since 10/03/2020 is changed to 03/10/2020 e.g. in UK english
+    $filter->day = DateHelper::parseDateTime($filter->day);
+}
 
 ?>
-<div>
-    <?= Yii::t('AdminModule.views_logging_index', 'Total {count} entries found.', ["{count}" => $pagination->totalCount]); ?>
-    <span class="pull-right"><?= Yii::t('AdminModule.views_logging_index', 'Displaying {count} entries per page.', ["{count}" => $pagination->pageSize]); ?></span>
-</div>
 
-<hr>
-<ul class="media-list">
-    <?php foreach ($logEntries as $entry) : ?>
+<style>
+    #admin-log-root .select2-selection__choice[title="<?= Html::encode(LogFilterForm::getLevelLabel(Logger::LEVEL_ERROR)) ?>"] {
+        background-color: var(--danger);
+    }
 
-        <li class="media">
-            <div class="media-body">
+    #admin-log-root .select2-selection__choice[title="<?= Html::encode(LogFilterForm::getLevelLabel(Logger::LEVEL_WARNING)) ?>"] {
+        background-color: var(--warning);
+    }
 
-                <?php
-                $labelClass = "label-primary";
-                if ($entry->level == \yii\log\Logger::LEVEL_WARNING) {
-                    $labelClass = "label-warning";
-                    $levelName = "Warning";
-                } elseif ($entry->level == \yii\log\Logger::LEVEL_ERROR) {
-                    $labelClass = "label-danger";
-                    $levelName = "Error";
-                } elseif ($entry->level == \yii\log\Logger::LEVEL_INFO) {
-                    $labelClass = "label-info";
-                    $levelName = "Info";
-                }
-                ?>
+    #admin-log-root .select2-selection__choice[title="<?= Html::encode(LogFilterForm::getLevelLabel(Logger::LEVEL_INFO)) ?>"] {
+        background-color: var(--info);
+    }
+</style>
 
-                <h4 class="media-heading">
-                    <span class="label <?= $labelClass; ?>"><?= CHtml::encode($levelName); ?></span>&nbsp;
-                    <?= date('r', $entry->log_time); ?>&nbsp;
-                    <span class="pull-right"><?= CHtml::encode($entry->category); ?></span>
-                </h4>
-                <?= CHtml::encode($entry->message); ?>
+<div id="admin-log-root">
+    <div data-ui-widget="admin.log.LogFilterForm" data-ui-init="1">
+        <div class="container gx-0 overflow-x-hidden">
+            <?php $form = ActiveForm::begin([
+                'action' => Url::to(['/admin/logging/index']),
+                'options' => ['class' => 'row'],
+            ]) ?>
+
+            <div class="col-lg-3 col-lg-push-1" style="padding-right:0">
+                <?= $form->field($filter, 'term')->textInput(
+                    [
+                        'placeholder' => Yii::t('AdminModule.information', 'Search term...'),
+                        'maxlength' => 200,
+                    ]
+                )->label(false) ?>
             </div>
-        </li>
+            <div class="col-lg-2" style="padding-right:0">
+                <?= $form->field($filter, 'day')->widget(DatePicker::class, [
+                    'dateFormat' => Yii::$app->formatter->dateInputFormat,
+                    'options' => ['placeholder' => Yii::t('AdminModule.information', 'Select day')],
+                ])->label(false) ?>
+            </div>
+            <div class="col-lg-4" style="padding-right:0">
+                <?= $form->field($filter, 'levels')->widget(MultiSelect::class, [
+                    'items' => $filter->getLevelSelection(),
+                    'placeholderMore' => Yii::t('AdminModule.information', 'Select level...')
+                ])->label(false) ?>
+            </div>
+            <div class="col-lg-3">
+                <?= $form->field($filter, 'category')->dropDownList($filter->getCategorySelection())->label(false) ?>
+            </div>
 
-    <?php endforeach; ?>
-</ul>
+            <?php ActiveForm::end() ?>
+        </div>
+    </div>
 
-<?php if ($pagination->totalCount != 0): ?>
-    <div class="pull-right"><?= Html::a(Yii::t('AdminModule.views_logging_index', 'Flush entries'), ['flush'], ['class' => 'btn btn-danger', 'data-method' => 'post']); ?></div>
-<?php endif; ?>
-
-<center>
-    <?= \humhub\widgets\LinkPager::widget(['pagination' => $pagination]); ?>
-</center>
+    <?= $this->render('log_entries', ['pagination' => $pagination, 'logEntries' => $logEntries]) ?>
+</div>

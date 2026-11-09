@@ -8,7 +8,7 @@
 
 namespace humhub\modules\admin\jobs;
 
-use humhub\components\queue\ActiveJob;
+use humhub\modules\queue\ActiveJob;
 use humhub\modules\admin\models\Log;
 
 /**
@@ -19,7 +19,6 @@ use humhub\modules\admin\models\Log;
  */
 class CleanupLog extends ActiveJob
 {
-
     /**
      * @var int seconds before delete old log messages
      */

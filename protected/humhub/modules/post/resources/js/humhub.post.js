@@ -1,15 +1,24 @@
-humhub.module('post', function(module, require, $) {
+humhub.module('post', function (module, require, $) {
     var Widget = require('ui.widget').Widget;
-    var object = require('util').object;
 
-    var Post = function(node, options) {
-        Widget.call(this, node, options);
+    var Post = Widget.extend();
+
+    Post.prototype.init = function () {
+        var that = this;
+
+        if (this.data('dynamic-font-size')) {
+            this.$.find('[data-ui-richtext]').on('afterRender', function () {
+                var $rtContent = $(this).children();
+                var $first = $rtContent.first();
+
+                if ($rtContent.length === 1 && $first.is('p') && $first.text().length < 150 && !$first.find('br').length) {
+                    that.$.addClass('post-short-text');
+                }
+            })
+        }
     };
 
-    object.inherits(Post, Widget);
-    
     module.export({
         Post: Post
     });
-
 });

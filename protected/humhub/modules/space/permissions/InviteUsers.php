@@ -8,14 +8,15 @@
 
 namespace humhub\modules\space\permissions;
 
+use humhub\libs\BasePermission;
 use humhub\modules\space\models\Space;
+use Yii;
 
 /**
  * Invite new users to space permission
  */
-class InviteUsers extends \humhub\libs\BasePermission
+class InviteUsers extends BasePermission
 {
-
     /**
      * @inheritdoc
      */
@@ -49,12 +50,12 @@ class InviteUsers extends \humhub\libs\BasePermission
      */
     protected $moduleId = 'space';
 
-    public function __construct($config = array())
+    public function __construct($config = [])
     {
         parent::__construct($config);
 
-        $this->title = \Yii::t('SpaceModule.permissions', 'Invite users');
-        $this->description = \Yii::t('SpaceModule.permissions', 'Allows the user to invite new members to the space');
+        $this->title = Yii::t('SpaceModule.permissions', 'Invite users');
+        $this->description = Yii::t('SpaceModule.permissions', 'Allows the user to invite new members to the space');
     }
 
 }

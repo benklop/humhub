@@ -2,9 +2,6 @@
 
 return [
     'fixtures' => [
-        'default'
-    ]
+        'default',
+    ],
 ];
-
-
-

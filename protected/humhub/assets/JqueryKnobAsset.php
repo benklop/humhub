@@ -18,13 +18,12 @@ use yii\web\View;
  */
 class JqueryKnobAsset extends AssetBundle
 {
-
     public $jsOptions = ['position' => View::POS_BEGIN];
 
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/jquery-knob';
+    public $sourcePath = '@npm/jquery-knob';
 
     /**
      * @inheritdoc

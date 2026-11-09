@@ -15,8 +15,8 @@ use humhub\components\ActiveRecord;
  *
  * The followings are the available columns in table 'user_http_session':
  * @property string $id
- * @property integer $expire
- * @property integer $user_id
+ * @property int $expire
+ * @property int $user_id
  * @property string $data
  *
  * @package humhub.modules_core.user.models
@@ -25,7 +25,6 @@ use humhub\components\ActiveRecord;
  */
 class Session extends ActiveRecord
 {
-
     /**
      * @return string the associated database table name
      */
@@ -36,7 +35,7 @@ class Session extends ActiveRecord
 
     public function getUser()
     {
-        return $this->hasOne(User::className(), ['id' => 'user_id']);
+        return $this->hasOne(User::class, ['id' => 'user_id']);
     }
 
 }

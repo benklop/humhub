@@ -2,6 +2,8 @@
 
 namespace humhub\modules\user\widgets;
 
+use yii\base\Widget;
+
 /**
  * UserTagsWidget lists all skills/tags of the user
  *
@@ -9,16 +11,13 @@ namespace humhub\modules\user\widgets;
  * @since 0.5
  * @author andystrobel
  */
-class UserTags extends \yii\base\Widget
+class UserTags extends Widget
 {
-
     public $user;
 
     public function run()
     {
-        return $this->render('userTags', array('user' => $this->user));
+        return $this->render('userTags', ['user' => $this->user]);
     }
 
 }
-
-?>

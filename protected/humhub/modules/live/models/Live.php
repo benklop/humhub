@@ -2,22 +2,23 @@
 
 namespace humhub\modules\live\models;
 
+use humhub\components\ActiveRecord;
 use humhub\modules\content\models\ContentContainer;
+use yii\db\ActiveQuery;
 
 /**
  * This is the model class for table "live".
  *
- * @property integer $id
- * @property integer $contentcontainer_id
- * @property integer $visibility
+ * @property int $id
+ * @property int $contentcontainer_id
+ * @property int $visibility
  * @property string $serialized_data
- * @property integer $created_at
+ * @property int $created_at
  *
  * @property Contentcontainer $contentcontainer
  */
-class Live extends \humhub\components\ActiveRecord
+class Live extends ActiveRecord
 {
-
     /**
      * @inheritdoc
      */
@@ -35,16 +36,16 @@ class Live extends \humhub\components\ActiveRecord
             [['contentcontainer_id', 'visibility', 'created_at'], 'integer'],
             [['serialized_data', 'created_at'], 'required'],
             [['serialized_data'], 'string'],
-            [['contentcontainer_id'], 'exist', 'skipOnError' => true, 'targetClass' => ContentContainer::className(), 'targetAttribute' => ['contentcontainer_id' => 'id']],
+            [['contentcontainer_id'], 'exist', 'skipOnError' => true, 'targetClass' => ContentContainer::class, 'targetAttribute' => ['contentcontainer_id' => 'id']],
         ];
     }
 
     /**
-     * @return \yii\db\ActiveQuery
+     * @return ActiveQuery
      */
     public function getContentcontainer()
     {
-        return $this->hasOne(Contentcontainer::className(), ['id' => 'contentcontainer_id']);
+        return $this->hasOne(Contentcontainer::class, ['id' => 'contentcontainer_id']);
     }
 
 }

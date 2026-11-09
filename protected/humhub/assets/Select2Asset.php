@@ -17,26 +17,32 @@ use yii\web\AssetBundle;
  */
 class Select2Asset extends AssetBundle
 {
-
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/select2';
+    public $sourcePath = '@npm/select2/dist/js';
 
     /**
      * @inheritdoc
+     *
+     * The i18n files are loaded by select2 at runtime depending on the language.
      */
-    public $js = ['dist/js/select2.full.js'];
-
-    /**
-     * @inheritdoc
-     */
-    public $css = ['dist/css/select2.min.css'];
-
-    public $depends = [
-        'yii\web\JqueryAsset',
-
-        'yii\bootstrap\BootstrapAsset'
+    public $publishOptions = [
+        'only' => [
+            'select2.full.min.js',
+            'i18n/*',
+        ],
     ];
 
+    /**
+     * @inheritdoc
+     */
+    public $js = ['select2.full.min.js'];
+
+    /**
+     * @inheritdoc
+     */
+    public $depends = [
+        Select2StyleAsset::class,
+    ];
 }

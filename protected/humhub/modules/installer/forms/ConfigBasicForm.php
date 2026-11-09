@@ -9,15 +9,15 @@
 namespace humhub\modules\installer\forms;
 
 use Yii;
+use yii\base\Model;
 
 /**
  * ConfigBasicForm holds basic application settings.
  *
  * @since 0.5
  */
-class ConfigBasicForm extends \yii\base\Model
+class ConfigBasicForm extends Model
 {
-
     /**
      * @var string name of installation
      */
@@ -28,9 +28,9 @@ class ConfigBasicForm extends \yii\base\Model
      */
     public function rules()
     {
-        return array(
-            array('name', 'required'),
-        );
+        return [
+            ['name', 'required'],
+        ];
     }
 
     /**
@@ -38,9 +38,9 @@ class ConfigBasicForm extends \yii\base\Model
      */
     public function attributeLabels()
     {
-        return array(
-            'name' => Yii::t('InstallerModule.forms_ConfigBasicForm', 'Name of your network'),
-        );
+        return [
+            'name' => Yii::t('InstallerModule.base', 'Name of your network'),
+        ];
     }
 
 }

@@ -8,59 +8,124 @@
 
 namespace humhub\modules\post\controllers;
 
+use humhub\modules\content\components\ContentContainerController;
+use humhub\modules\content\widgets\richtext\converter\RichTextToPlainTextConverter;
+use humhub\modules\content\widgets\stream\StreamEntryOptions;
+use humhub\modules\content\widgets\stream\StreamEntryWidget;
+use humhub\modules\content\widgets\stream\WallStreamEntryOptions;
+use humhub\modules\content\widgets\WallCreateContentForm;
+use humhub\modules\file\handler\FileHandlerCollection;
+use humhub\modules\post\models\forms\PostEditForm;
 use humhub\modules\post\models\Post;
+use humhub\modules\post\widgets\Form;
+use Throwable;
 use Yii;
+use yii\base\Exception;
+use yii\base\InvalidConfigException;
+use yii\web\ForbiddenHttpException;
+use yii\web\HttpException;
+use yii\web\NotFoundHttpException;
 
 /**
- * @package humhub.modules_core.post.controllers
  * @since 0.5
  */
-class PostController extends \humhub\modules\content\components\ContentContainerController
+class PostController extends ContentContainerController
 {
+    /**
+     * @param $id
+     * @return string
+     * @throws HttpException
+     * @throws Throwable
+     * @throws Exception
+     */
+    public function actionView($id)
+    {
+        /** @var Post $post */
+        $post = Post::find()
+            ->contentContainer($this->contentContainer)
+            ->readable()->where(['post.id' => (int)$id])->one();
 
+        if ($post === null) {
+            throw new HttpException(404);
+        }
+
+        $this->view->setPageTitle(Yii::t('PostModule.base', 'Post'), true);
+        $this->view->meta->setContent($post);
+        $this->view->meta->setDescription(RichTextToPlainTextConverter::process($post->message));
+        $this->view->meta->setImages($post->fileManager->findAll());
+
+        return $this->render('view', [
+            'post' => $post,
+            'contentContainer' => $this->contentContainer,
+            'renderOptions' => new StreamEntryOptions(['viewContext' => WallStreamEntryOptions::VIEW_CONTEXT_DETAIL]),
+        ]);
+    }
+
+
+    /**
+     * @return array|mixed
+     * @throws Throwable
+     * @throws Exception
+     * @throws InvalidConfigException
+     */
     public function actionPost()
     {
+        $post = new Post($this->contentContainer);
+
         // Check createPost Permission
-        if (!$this->contentContainer->getPermissionManager()->can(new \humhub\modules\post\permissions\CreatePost())) {
+        if (!$post->content->canEdit()) {
             return [];
         }
 
-        $post = new Post();
-        $post->message = \Yii::$app->request->post('message');
+        $post->load(Yii::$app->request->post(), 'Post');
 
-        /*
-          // Experimental: Auto attach found images urls in message as files
-          if (isset(Yii::app()->params['attachFilesByUrlsToContent']) && Yii::app()->params['attachFilesByUrlsToContent'] == true) {
-          Yii::import('application.modules_core.file.libs.*');
-          RemoteFileDownloader::attachFiles($post, $post->message);
-          }
-         */
+        if (!empty(Yii::$app->request->post('fileList'))) {
+            $post->scenario = Post::SCENARIO_HAS_FILES;
+        }
 
-        return \humhub\modules\content\widgets\WallCreateContentForm::create($post, $this->contentContainer);
+        return Post::getDb()->transaction(fn($db) => WallCreateContentForm::create($post, $this->contentContainer));
     }
 
-    public function actionEdit()
+    public function actionEdit($id)
     {
-        $id = Yii::$app->request->get('id');
+        $post = Post::findOne(['id' => $id]);
+        if (!$post) {
+            throw new NotFoundHttpException();
+        }
 
-        $edited = false;
-        $model = Post::findOne(['id' => $id]);
+        $model = new PostEditForm(['post' => $post]);
 
-        if (!$model->content->canEdit()) {
+        if (!$post->content->canEdit()) {
             $this->forbidden();
         }
 
         if ($model->load(Yii::$app->request->post())) {
             // Reload record to get populated updated_at field
-            if ($model->validate() && $model->save()) {
-                $model = Post::findOne(['id' => $id]);
-                return $this->renderAjaxContent($model->getWallOut());
+            if ($model->save()) {
+                $post = Post::findOne(['id' => $id]);
+                return $this->renderAjaxContent(StreamEntryWidget::renderStreamEntry($post, WallStreamEntryOptions::getInstanceFromRequest()));
             } else {
                 Yii::$app->response->statusCode = 400;
             }
         }
 
-        return $this->renderAjax('edit', ['post' => $model, 'edited' => $edited]);
+        return $this->renderAjax('edit', [
+            'model' => $model,
+            'fileHandlers' => FileHandlerCollection::getByType([FileHandlerCollection::TYPE_IMPORT, FileHandlerCollection::TYPE_CREATE]),
+            'submitUrl' => $post->content->container->createUrl('/post/post/edit', ['id' => $post->id]),
+            'viewContext' => Yii::$app->request->get('viewContext'),
+        ]);
+    }
+
+    public function actionCreateForm()
+    {
+        if (!(new Post($this->contentContainer))->content->canEdit()) {
+            throw new ForbiddenHttpException();
+        }
+
+        return $this->renderAjaxPartial(Form::widget([
+            'contentContainer' => $this->contentContainer,
+        ]));
     }
 
 }

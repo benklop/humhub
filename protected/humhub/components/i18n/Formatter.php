@@ -8,15 +8,16 @@
 
 namespace humhub\components\i18n;
 
+use humhub\components\InstallationState;
 use IntlDateFormatter;
 use Yii;
+use yii\base\InvalidArgumentException;
 
 /**
  * @inheritdoc
  */
 class Formatter extends \yii\i18n\Formatter
 {
-
     /**
      * @inheritdoc
      */
@@ -36,7 +37,7 @@ class Formatter extends \yii\i18n\Formatter
     {
         parent::init();
 
-        if (Yii::$app->params['installed'] && Yii::$app->getModule('admin')->settings->get('defaultDateInputFormat') != '') {
+        if (Yii::$app->installationState->hasState(InstallationState::STATE_INSTALLED) && Yii::$app->getModule('admin') !== null && !empty(Yii::$app->getModule('admin')->settings->get('defaultDateInputFormat'))) {
             $this->dateInputFormat = Yii::$app->getModule('admin')->settings->get('defaultDateInputFormat');
         }
     }
@@ -50,8 +51,9 @@ class Formatter extends \yii\i18n\Formatter
      * @param null $locale
      * @return null|string
      */
-    public function getDateTimePattern($dateType = IntlDateFormatter::SHORT, $timeType = IntlDateFormatter::SHORT, $locale = null) {
-        if(extension_loaded('intl')) {
+    public function getDateTimePattern($dateType = IntlDateFormatter::SHORT, $timeType = IntlDateFormatter::SHORT, $locale = null)
+    {
+        if (extension_loaded('intl')) {
             $locale = empty($locale) ? $this->locale : $locale;
             $formatter = new IntlDateFormatter($locale, $dateType, $timeType, $this->timeZone, $this->calendar);
             return $formatter->getPattern();
@@ -68,12 +70,75 @@ class Formatter extends \yii\i18n\Formatter
      * @param null $locale
      * @return bool if the locale uses a 12 hour (AM/PM) otherwise a 24 hour time format is used.
      */
-    public function isShowMeridiem($locale = null) {
-        if(extension_loaded('intl')) {
+    public function isShowMeridiem($locale = null)
+    {
+        if (extension_loaded('intl')) {
             $pattern = $this->getDateTimePattern(IntlDateFormatter::NONE, IntlDateFormatter::SHORT);
-            return strpos($pattern, 'a') !== false;
+            return str_contains((string) $pattern, 'a');
         }
         return false;
     }
 
+    /**
+     * Formats the value as short integer number by removing any decimal and thousand digits without rounding.
+     *
+     * @param mixed $value the value to be formatted.
+     * @param array $options optional configuration for the number formatter. This parameter will be merged with [[numberFormatterOptions]].
+     * @param array $textOptions optional configuration for the number formatter. This parameter will be merged with [[numberFormatterTextOptions]].
+     * @return string the formatted result, e.g. 5K, 123M, 42B, 9T, 1Q
+     * @throws InvalidArgumentException if the input value is not numeric or the formatting failed.
+     */
+    public function asShortInteger($value, $options = [], $textOptions = [])
+    {
+        [$params, $position] = $this->formatNumber($value, 0, 2, 1000, $options, $textOptions);
+
+        if ($position < 3 && mb_strlen((string) $params['nFormatted']) === 4) {
+            // Convert 1000K to 1M or 1000M to 1B
+            $params['nFormatted'] = mb_substr((string) $params['nFormatted'], 0, 1);
+            $position++;
+        }
+
+        return match ($position) {
+            0 => $params['nFormatted'],
+            1 => Yii::t('base', '{nFormatted}K', $params, $this->language),
+            2 => Yii::t('base', '{nFormatted}M', $params, $this->language),
+            default => Yii::t('base', '{nFormatted}B', $params, $this->language),
+        };
+    }
+
+    /**
+     * Fix unicode chars
+     *
+     * @param string $value
+     * @return string
+     */
+    private function fixUnicodeChars($value): string
+    {
+        // Replace newly introduced Unicode separator whitespace, which a standard one, to sway backward compatible.
+        return str_replace(' ', ' ', $value);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function asDate($value, $format = null)
+    {
+        return $this->fixUnicodeChars(parent::asDate($value, $format));
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function asTime($value, $format = null)
+    {
+        return $this->fixUnicodeChars(parent::asTime($value, $format));
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function asDatetime($value, $format = null)
+    {
+        return $this->fixUnicodeChars(parent::asDatetime($value, $format));
+    }
 }

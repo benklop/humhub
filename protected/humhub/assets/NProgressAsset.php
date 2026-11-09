@@ -8,7 +8,7 @@
 
 namespace humhub\assets;
 
-use yii\web\AssetBundle;
+use humhub\components\assets\AssetBundle;
 
 /**
  * NProgress assets
@@ -18,25 +18,18 @@ use yii\web\AssetBundle;
  */
 class NProgressAsset extends AssetBundle
 {
-
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/nprogress';
-
-    /**
-     * @inheritdoc
-     */
-    public $css = [
-        'nprogress.css',
-    ];
+    public $sourcePath = '@npm/nprogress';
 
     /**
      * @inheritdoc
      */
     public $js = [
-        'nprogress.js'
+        'nprogress.js',
     ];
+
 
     /**
      * @inheritdoc
@@ -44,9 +37,14 @@ class NProgressAsset extends AssetBundle
     public $publishOptions = [
         'only' => [
             '/nprogress.css',
-            '/support/extras.css',
             '/nprogress.js',
         ],
     ];
 
+    /**
+     * @inheritdoc
+     */
+    public $depends = [
+        NProgressStyleAsset::class,
+    ];
 }

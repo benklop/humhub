@@ -2,18 +2,19 @@
 
 namespace humhub\modules\content\interfaces;
 
+use humhub\modules\content\models\Content;
+
 /**
  * Interface for classes which are able to return content instances.
- * 
- * @see \humhub\modules\content\models\Content
+ *
+ * @see Content
  * @author buddha
  * @since 1.2
  */
 interface ContentOwner
 {
-
     /**
-     * @returns \humhub\modules\content\models\Content content instance of this content owner
+     * @returns Content content instance of this content owner
      */
     public function getContent();
 
@@ -23,7 +24,10 @@ interface ContentOwner
     public function getContentName();
 
     /**
-     * @returns string short content description
+     * Returns a text, markdown or richtext description e.g. the message of a post which is for example
+     * used for content previews and mails.
+     *
+     * @returns string a plaintext, markdown or richtext description e.g. the message of a post
      */
     public function getContentDescription();
 }

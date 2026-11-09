@@ -8,69 +8,76 @@
 
 namespace humhub\modules\space\widgets;
 
+use humhub\helpers\ControllerHelper;
+use humhub\modules\content\helpers\ContentContainerHelper;
+use humhub\modules\space\models\Space;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\modules\ui\menu\widgets\LeftNavigation;
 use Yii;
 use yii\base\Exception;
-use humhub\modules\content\components\ContentContainerController;
-use humhub\modules\space\models\Space;
 
 /**
  * The Main Navigation for a space. It includes the Modules the Stream
  *
  * @author Luke
- * @package humhub.modules_core.space.widgets
  * @since 0.5
  */
-class Menu extends \humhub\widgets\BaseMenu
+class Menu extends LeftNavigation
 {
     /** @var Space */
     public $space;
-    public $template = "@humhub/widgets/views/leftNavigation";
 
+    /** @var Space */
+    public $id = 'space-main-menu';
+
+    /**
+     * @inheritdoc
+     */
     public function init()
     {
-        if ($this->space === null && Yii::$app->controller instanceof ContentContainerController && Yii::$app->controller->contentContainer instanceof Space) {
-            $this->space = Yii::$app->controller->contentContainer;
+        if (!$this->space) {
+            $this->space = ContentContainerHelper::getCurrent(Space::class);
         }
 
-        if ($this->space === null) {
-            throw new Exception("Could not instance space menu without space!");
+        if (!$this->space) {
+            throw new Exception('Could not instance space menu without space!');
         }
-        
-        $this->id = 'navigation-menu-space-' . $this->space->getUniqueId();
 
-        $this->addItemGroup(array(
-            'id' => 'modules',
-            'label' => Yii::t('SpaceModule.widgets_SpaceMenuWidget', '<strong>Space</strong> menu'),
-            'sortOrder' => 100,
-        ));
-
-        $this->addItem(array(
-            'label' => Yii::t('SpaceModule.widgets_SpaceMenuWidget', 'Stream'),
-            'group' => 'modules',
-            'url' => $this->space->createUrl('/space/space/home'),
-            'icon' => '<i class="fa fa-bars"></i>',
-            'sortOrder' => 100,
-            'isActive' => (Yii::$app->controller->id == 'space' && (Yii::$app->controller->action->id == 'index' || Yii::$app->controller->action->id == 'home') && Yii::$app->controller->module->id == 'space'),
-        ));
+        $this->panelTitle = Yii::t('SpaceModule.base', '<strong>Space</strong> menu');
 
         parent::init();
+
+        // For private Spaces without membership, don't show menu entries.
+        // This is necessary for the invitation process otherwise there is no access in this case anyway.
+        if ($this->space->visibility == Space::VISIBILITY_NONE && !$this->space->isMember()) {
+            $this->entries = [];
+            return;
+        }
+
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('SpaceModule.base', 'Stream'),
+            'url' => $this->space->createUrl('/space/space/home'),
+            'icon' => 'stream',
+            'sortOrder' => 100,
+            'isActive' => ControllerHelper::isActivePath('space', 'space', ['index', 'home']),
+        ]));
     }
 
     /**
      * Searches for urls of modules which are activated for the current space
      * and offer an own site over the space menu.
      * The urls are associated with a module label.
-     * 
-     * Returns an array of urls with associated module labes for modules 
-     * @param type $space
+     *
+     * Returns an array of urls with associated module labes for modules
      */
     public static function getAvailablePages()
     {
         //Initialize the space Menu to check which active modules have an own page
-        $moduleItems = (new static())->getItems('modules');
+        $entries = (new static())->getEntries(MenuLink::class);
         $result = [];
-        foreach ($moduleItems as $moduleItem) {
-            $result[$moduleItem['url']] = $moduleItem['label'];
+        foreach ($entries as $entry) {
+            /* @var $entry MenuLink */
+            $result[$entry->getUrl()] = $entry->getLabel();
         }
 
         return $result;
@@ -78,48 +85,27 @@ class Menu extends \humhub\widgets\BaseMenu
 
     /**
      * Returns space default / homepage
-     * 
+     *
+     * @param Space $space
      * @return string|null the url to redirect or null for default home
      */
     public static function getDefaultPageUrl($space)
     {
-        $settings = Yii::$app->getModule('space')->settings;
-
-        $indexUrl = $settings->contentContainer($space)->get('indexUrl');
-        if ($indexUrl !== null) {
-            $pages = static::getAvailablePages();
-            if (isset($pages[$indexUrl])) {
-                return $indexUrl;
-            } else {
-                //Either the module was deactivated or url changed
-                $settings->contentContainer($space)->delete('indexUrl');
-            }
-        }
-
-        return null;
+        $indexUrl = $space->getAdvancedSettings()->indexUrl;
+        return (!empty($indexUrl) && isset(static::getAvailablePages()[$indexUrl]))
+            ? $indexUrl : null;
     }
 
     /**
-     * Returns space default / homepage
-     * 
+     * Returns space default / homepage for guests
+     *
+     * @param $space Space
      * @return string|null the url to redirect or null for default home
      */
     public static function getGuestsDefaultPageUrl($space)
     {
-        $settings = Yii::$app->getModule('space')->settings;
-
-        $indexUrl = $settings->contentContainer($space)->get('indexGuestUrl');
-        if ($indexUrl !== null) {
-            $pages = static::getAvailablePages();
-            if (isset($pages[$indexUrl])) {
-                return $indexUrl;
-            } else {
-                //Either the module was deactivated or url changed
-                $settings->contentContainer($space)->delete('indexGuestUrl');
-            }
-        }
-
-        return null;
+        $indexUrl = $space->getAdvancedSettings()->indexGuestUrl;
+        return (!empty($indexUrl) && isset(static::getAvailablePages()[$indexUrl]))
+            ? $indexUrl : null;
     }
-
 }

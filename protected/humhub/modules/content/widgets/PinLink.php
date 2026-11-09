@@ -8,9 +8,9 @@
 
 namespace humhub\modules\content\widgets;
 
-use Yii;
+use humhub\modules\content\components\ContentActiveRecord;
+use yii\base\Widget;
 use yii\helpers\Url;
-use humhub\modules\content\components\ContentContainerController;
 
 /**
  * PinLinkWidget for Wall Entries shows a pin link.
@@ -21,11 +21,10 @@ use humhub\modules\content\components\ContentContainerController;
  * @package humhub.modules_core.wall.widgets
  * @since 0.5
  */
-class PinLink extends \yii\base\Widget
+class PinLink extends Widget
 {
-
     /**
-     * @var \humhub\modules\content\components\ContentActiveRecord
+     * @var ContentActiveRecord
      */
     public $content;
 
@@ -36,17 +35,15 @@ class PinLink extends \yii\base\Widget
     {
 
         // Show pin links only inside content container streams
-        if (!Yii::$app->controller instanceof ContentContainerController || !$this->content->content->canPin()) {
-            return;
+        if (!$this->content->content->canPin()) {
+            return '';
         }
 
-        return $this->render('pinLink', array(
-                    'pinUrl' => Url::to(['/content/content/pin', 'id' => $this->content->content->id]),
-                    'unpinUrl' => Url::to(['/content/content/un-pin', 'id' => $this->content->content->id]),
-                    'isPinned' => $this->content->content->isPinned()
-        ));
+        return $this->render('pinLink', [
+            'pinUrl' => Url::to(['/content/content/pin', 'id' => $this->content->content->id]),
+            'unpinUrl' => Url::to(['/content/content/un-pin', 'id' => $this->content->content->id]),
+            'isPinned' => $this->content->content->isPinned(),
+        ]);
     }
 
 }
-
-?>

@@ -9,15 +9,15 @@
 namespace humhub\modules\installer\forms;
 
 use Yii;
+use yii\base\Model;
 
 /**
  * Use Case Form
  *
  * @since 0.5
  */
-class UseCaseForm extends \yii\base\Model
+class UseCaseForm extends Model
 {
-
     /**
      * @var string use case
      */
@@ -28,9 +28,9 @@ class UseCaseForm extends \yii\base\Model
      */
     public function rules()
     {
-        return array(
-            array(['useCase'], 'required'),
-        );
+        return [
+            [['useCase'], 'required'],
+        ];
     }
 
     /**
@@ -38,9 +38,9 @@ class UseCaseForm extends \yii\base\Model
      */
     public function attributeLabels()
     {
-        return array(
-            'useCase' => Yii::t('InstallerModule.forms_UseCaseForm', 'I want to use HumHub for:'),
-        );
+        return [
+            'useCase' => Yii::t('InstallerModule.base', 'I want to use HumHub for:'),
+        ];
     }
 
 }

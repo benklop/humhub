@@ -2,6 +2,7 @@
 
 namespace humhub\modules\notification\tests\codeception\unit\category\notifications;
 
+use humhub\modules\notification\components\NotificationCategory;
 use humhub\modules\notification\targets\MailTarget;
 use humhub\modules\notification\targets\WebTarget;
 use humhub\modules\notification\targets\BaseTarget;
@@ -11,16 +12,15 @@ use humhub\modules\notification\targets\BaseTarget;
  *
  * @author buddha
  */
-class TestNotificationCategory extends \humhub\modules\notification\components\NotificationCategory
+class TestNotificationCategory extends NotificationCategory
 {
-
     public $id = 'test';
 
     public function getDefaultSetting(BaseTarget $target)
     {
         if ($target->id === MailTarget::getId()) {
             return false;
-        } else if ($target->id === webTarget::getId()) {
+        } elseif ($target->id === webTarget::getId()) {
             return true;
         }
 
@@ -36,5 +36,4 @@ class TestNotificationCategory extends \humhub\modules\notification\components\N
     {
         return 'Test Category';
     }
-
 }

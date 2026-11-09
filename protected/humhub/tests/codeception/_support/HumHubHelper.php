@@ -1,9 +1,26 @@
 <?php
 
+/*
+ * @link      https://www.humhub.org/
+ * @copyright Copyright (c) 2023 HumHub GmbH & Co. KG
+ * @license   https://www.humhub.com/licences
+ */
+
+/**
+ * @noinspection PhpIllegalPsrClassPathInspection
+ */
+
 namespace tests\codeception\_support;
 
 use Codeception\Module;
+use humhub\models\UrlOembed;
+use humhub\modules\content\widgets\richtext\converter\RichTextToHtmlConverter;
+use humhub\modules\content\widgets\richtext\converter\RichTextToMarkdownConverter;
+use humhub\modules\content\widgets\richtext\converter\RichTextToPlainTextConverter;
+use humhub\modules\content\widgets\richtext\converter\RichTextToShortTextConverter;
 use Yii;
+use yii\helpers\FileHelper;
+use yii\symfonymailer\Message;
 
 /**
  * This helper is used to populate the database with needed fixtures before any tests are run.
@@ -13,45 +30,75 @@ use Yii;
  */
 class HumHubHelper extends Module
 {
+    use HumHubHelperTrait;
 
-    protected $config = [];
-    
-    public function inviteUserByEmail($email) {
+    protected array $config = [];
+
+    /* @codingStandardsIgnoreLine PSR2.Methods.MethodDeclaration.Underscore */
+    public function _before(\Codeception\TestInterface $test)
+    {
+        static::reloadSettings(__METHOD__);
+        static::flushCache(__METHOD__);
+    }
+
+    public function fetchInviteToken($mail)
+    {
+        if ($mail instanceof Message) {
+            $mail = $mail->getHtmlBody();
+        }
+
+        $re = [];
+        preg_match('/token=([A-Za-z0-9_-]{12})\"/', (string) $mail, $re);
+
+        if (!isset($re[1])) {
+            $this->assertTrue(false, 'Invite token not found');
+        }
+
+        return trim($re[1]);
+    }
+
+    public function inviteUserByEmail($email)
+    {
         $this->getModule('Yii2')->_loadPage('POST', '/user/invite', ['Invite[emails]' => $email]);
     }
 
+    /** @noinspection PhpUnhandledExceptionInspection */
     public function assertMailSent($count = 0, $msg = null)
     {
-        return $this->getModule('Yii2')->seeEmailIsSent($count);
+        $this->getYiiModule()->seeEmailIsSent($count);
     }
 
     public function assertEqualsLastEmailSubject($subject)
     {
-        $message = $this->getModule('Yii2')->grabLastSentEmail();
+        $message = $this->getYiiModule()->grabLastSentEmail();
         $this->assertEquals($subject, $message->getSubject());
     }
 
     public function grapLastEmailText()
     {
-        $message = $this->getModule('Yii2')->grabLastSentEmail();
-        foreach($message->getSwiftMessage()->getChildren() as $part) {
-            if($part->getContentType() === 'text/plain') {
-                return $part->getBody();
-            }
-        }
+        /** @var Message $message */
+        $message = $this->getYiiModule()->grabLastSentEmail();
+        return $message->getTextBody();
     }
 
     /*public function assertEqualsLastEmailSubject($subject)
     {
-        $message = $this->getModule('Yii2')->grabLastSentEmail();
+        $message = $this->getYiiModule()->grabLastSentEmail();
         $this->assertEquals($subject, $message->getSubject());
     }*/
 
-    public function initModules() {
-        if(!empty($this->config['modules'])) {
-            foreach($this->config['modules'] as $moduleId) {
+    public function initModules()
+    {
+        $modules = array_map(fn(Module $module) => $module->id, Yii::$app->moduleManager->getModules());
+
+        foreach ($modules as $moduleId) {
+            Yii::$app->moduleManager->getModule($moduleId)?->disable();
+        }
+
+        if (!empty($this->config['modules'])) {
+            foreach ($this->config['modules'] as $moduleId) {
                 $module = Yii::$app->moduleManager->getModule($moduleId);
-                if($module != null) {
+                if ($module != null) {
                     $module->enable();
                 } else {
                     //TODO: throw error ? skip ?...
@@ -59,5 +106,4 @@ class HumHubHelper extends Module
             }
         }
     }
-
 }

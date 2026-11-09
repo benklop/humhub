@@ -18,7 +18,6 @@ use humhub\modules\notification\components\NotificationCategory;
  */
 class FollowedNotificationCategory extends NotificationCategory
 {
-
     /**
      * @inheritdoc
      */
@@ -29,7 +28,7 @@ class FollowedNotificationCategory extends NotificationCategory
      */
     public function getTitle()
     {
-        return Yii::t('UserModule.notifications_FollowingNotificationCategory', 'Following');
+        return Yii::t('UserModule.notification', 'Following');
     }
 
     /**
@@ -37,7 +36,7 @@ class FollowedNotificationCategory extends NotificationCategory
      */
     public function getDescription()
     {
-        return Yii::t('UserModule.notifications_FollowingNotificationCategory', 'Receive Notifications when someone is following you.');
+        return Yii::t('UserModule.notification', 'Receive Notifications when someone is following you.');
     }
 
 }

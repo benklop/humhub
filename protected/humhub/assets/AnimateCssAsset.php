@@ -8,7 +8,7 @@
 
 namespace humhub\assets;
 
-use yii\web\AssetBundle;
+use humhub\components\assets\AssetBundle;
 
 /**
  * animate.css
@@ -17,16 +17,19 @@ use yii\web\AssetBundle;
  */
 class AnimateCssAsset extends AssetBundle
 {
+    /**
+     * @inheritdoc
+     */
+    public $sourcePath = '@npm/animate.css';
 
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/animate.css';
-
-    /**
-     * @inheritdoc
-     */
-    public $js = [];
+    public $publishOptions = [
+        'only' => [
+            'animate.min.css',
+        ],
+    ];
 
     /**
      * @inheritdoc

@@ -1,31 +1,45 @@
 <?php
 
-use yii\helpers\Html;
+use humhub\helpers\Html;
+use humhub\widgets\SiteLogo;
+
+/**
+ * @var $place string
+ * @var $maxWidth int
+ * @var $maxHeight int
+ * @var $id string
+ * @var $class string
+ */
+
+if (Yii::$app->img->logo->exists()) {
+    $img = Html::img(Yii::$app->img->logo->getUrl(['maxWidth' => $maxWidth, 'maxHeight' => $maxHeight]), [
+        'id' => $id,
+        'class' => $class,
+        'alt' => Yii::t('base', 'Logo of {appName}', ['appName' => Html::encode(Yii::$app->name)]),
+    ]);
+}
 ?>
-<?php if ($place == "topMenu") : ?>
-    <?php if ($logo->hasImage()) : ?>
-        <a class="navbar-brand hidden-xs" style="height: 50px; padding:5px;" href="<?= Yii::$app->homeUrl; ?>">
-            <img class="img-rounded" src="<?= $logo->getUrl(); ?>" alt="<?= Yii::t('base', 'Logo of {appName}', ['appName' => Html::encode(Yii::$app->name)])?>" id="img-logo"/>
+
+<?php if ($place === SiteLogo::PLACE_TOP_MENU) : ?>
+    <?php if (Yii::$app->img->logo->exists()) : ?>
+        <a class="navbar-brand d-none d-sm-block" href="<?= Yii::$app->homeUrl ?>">
+            <?= $img ?>
+        </a>
+    <?php else: ?>
+        <a class="navbar-brand navbar-brand-text"
+           href="<?= Yii::$app->homeUrl ?>" id="text-logo">
+            <?= Html::encode(Yii::$app->name) ?>
         </a>
     <?php endif; ?>
-    <a class="navbar-brand" style="<?php if ($logo->hasImage()) : ?>display:none;<?php endif; ?> "  href="<?= Yii::$app->homeUrl; ?>" id="text-logo">
-           <?= Html::encode(Yii::$app->name); ?>
-    </a>
 <?php endif; ?>
 
-<?php if ($place == "login") : ?>
-    <?php if ($logo->hasImage()) : ?>
-        <a href="<?= Yii::$app->homeUrl; ?>">
-            <img class="img-rounded" src="<?= $logo->getUrl(); ?>" id="img-logo" alt="<?= Yii::t('base', 'Logo of {appName}', ['appName' => Html::encode(Yii::$app->name)]) ?>"/>
+<?php if ($place === SiteLogo::PLACE_LOGIN) : ?>
+    <?php if (Yii::$app->img->logo->exists()) : ?>
+        <a href="<?= Yii::$app->homeUrl ?>" data-pjax-prevent>
+            <?= $img ?>
         </a>
         <br>
     <?php else: ?>
-        <h1 id="app-title" class="animated fadeIn"><?= Html::encode(Yii::$app->name); ?></h1>
+        <h1 id="app-title" class="animated fadeIn"><?= Html::encode(Yii::$app->name) ?></h1>
     <?php endif; ?>
 <?php endif; ?>
-
-
-
-
-
-

@@ -6,10 +6,9 @@ use humhub\modules\like\models\Like;
 
 class m150704_005434_namespace extends Migration
 {
-
     public function up()
     {
-        $this->renameClass('Like', Like::className());
+        $this->renameClass('Like', Like::class);
     }
 
     public function down()

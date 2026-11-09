@@ -1,8 +1,9 @@
 <?php
 
+use humhub\modules\stream\Module;
+
 return [
     'id' => 'stream',
-    'class' => \humhub\modules\stream\Module::className(),
+    'class' => Module::class,
     'isCoreModule' => true,
 ];
-?>

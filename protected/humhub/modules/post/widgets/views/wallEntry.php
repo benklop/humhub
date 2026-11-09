@@ -1,5 +1,33 @@
-<div data-ui-widget="post.Post" data-state="collapsed" data-ui-init id="post-content-<?= $post->id; ?>" style="overflow: hidden; margin-bottom: 5px;">
-    <div data-ui-markdown data-ui-show-more style="overflow: hidden;">
-        <?= humhub\widgets\RichText::widget(['text' => $post->message, 'record' => $post, 'markdown' => true]) ?>
+<?php
+
+use humhub\helpers\Html;
+use humhub\modules\content\widgets\richtext\RichText;
+use humhub\modules\content\widgets\stream\WallStreamEntryOptions;
+use humhub\modules\post\models\Post;
+
+/* @var $post Post */
+/* @var $renderOptions WallStreamEntryOptions */
+/* @var $enableDynamicFontSize bool */
+/* @var $collapsedPostHeight int */
+/* @var $guestExpandPosts bool */
+
+$isDetailView = $renderOptions->isViewContext(WallStreamEntryOptions::VIEW_CONTEXT_DETAIL) || $guestExpandPosts;
+
+?>
+<div data-ui-widget="post.Post" <?php if (!$isDetailView): ?>data-state="collapsed"<?php endif; ?>
+     data-dynamic-font-size="<?= intval($enableDynamicFontSize) ?>" data-ui-init id="post-content-<?= $post->id ?>">
+    <?php if (!empty($post->title)): ?>
+        <h1 class="post-title"><?= Html::encode($post->title) ?></h1>
+    <?php endif; ?>
+    <div
+        data-ui-markdown
+        <?php if (!$isDetailView): ?>
+            data-ui-show-more
+        <?php endif; ?>
+        <?php if ($collapsedPostHeight > 0): ?>
+            data-collapse-at="<?= $collapsedPostHeight ?>"
+        <?php endif; ?>
+    >
+        <?= RichText::output($post->message, ['record' => $post]) ?>
     </div>
 </div>

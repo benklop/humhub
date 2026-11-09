@@ -1,13 +1,13 @@
 humhub.module('live', function (module, require, $) {
     var object = require('util').object;
-    var user = require('user');
+    var event = require('event');
     var liveClient;
 
     var init = function () {
-        if (user.isGuest()) {
+        if (!module.config.isActive) {
             return;
         }
-        
+
         try {
             var clientType = require(module.config.client.type);
             if (clientType) {
@@ -19,6 +19,11 @@ humhub.module('live', function (module, require, $) {
             module.log.warn("Invalid live client configuration detected, live client could not be initialized.", module.config);
             module.log.error(e);
         }
+
+        event.on('humhub:modules:live:live:PreventPjaxOnNextClick', function (evt, liveEvents) {
+            module.log.debug('Prevent PJAX on next click by reason: ' + liveEvents.map(item => item.data.reason).join(', '));
+            $('a').attr('data-pjax-prevent', '1');
+        });
     };
 
     var setDelay = function (value) {

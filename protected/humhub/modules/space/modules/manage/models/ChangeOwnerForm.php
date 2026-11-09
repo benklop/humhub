@@ -8,6 +8,7 @@
 
 namespace humhub\modules\space\modules\manage\models;
 
+use humhub\modules\space\models\Space;
 use Yii;
 use yii\base\Model;
 use humhub\modules\space\models\Membership;
@@ -19,9 +20,8 @@ use humhub\modules\space\models\Membership;
  */
 class ChangeOwnerForm extends Model
 {
-
     /**
-     * @var \humhub\modules\space\models\Space
+     * @var Space
      */
     public $space;
 
@@ -37,7 +37,7 @@ class ChangeOwnerForm extends Model
     {
         return [
             ['ownerId', 'required'],
-            ['ownerId', 'in', 'range' => array_keys($this->getNewOwnerArray())]
+            ['ownerId', 'in', 'range' => array_keys($this->getNewOwnerArray())],
         ];
     }
 
@@ -53,14 +53,14 @@ class ChangeOwnerForm extends Model
 
     /**
      * Returns an array of all possible space owners
-     * 
+     *
      * @return array containing the user id as key and display name as value
      */
     public function getNewOwnerArray()
     {
         $possibleOwners = [];
 
-        $query = Membership::find()->joinWith(['user', 'user.profile'])->andWhere(['space_membership.group_id' => 'admin', 'space_membership.space_id' => $this->space->id]);
+        $query = Membership::find()->joinWith(['user', 'user.profile'])->andWhere(['space_membership.group_id' => Space::USERGROUP_ADMIN, 'space_membership.space_id' => $this->space->id]);
         foreach ($query->all() as $membership) {
             $possibleOwners[$membership->user->id] = $membership->user->displayName;
         }

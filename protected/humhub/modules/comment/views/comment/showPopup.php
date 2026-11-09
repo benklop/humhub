@@ -1,20 +1,40 @@
-<?php \humhub\widgets\ModalDialog::begin(['header' => Yii::t('CommentModule.views_comment_show', 'Comments')]) ?>
-    <div class="modal-body comment-container comment-modal-body" style="margin-top:0px">
-        <div id="userlist-content">
-            <div class="well well-small" id="comment_<?= $id; ?>">
-                <div class="comment" id="comments_area_<?= $id; ?>">
-                    <?= $output; ?>
-                </div>
-                <?= humhub\modules\comment\widgets\Form::widget(['object' => $object]); ?>
+<?php
+
+use humhub\components\View;
+use humhub\helpers\Html;
+use humhub\modules\comment\widgets\Form;
+use humhub\widgets\modal\Modal;
+
+/* @var $this View */
+/* @var $content \humhub\modules\content\models\Content */
+/* @var $output string */
+/* @var $id string */
+?>
+
+<?php Modal::beginDialog([
+    'title' => Yii::t('CommentModule.base', 'Comments'),
+    'bodyOptions' => [
+        'class' => ['comment-container', 'comment-modal-body'],
+        'style' => 'margin-top: 0;',
+    ],
+]) ?>
+
+    <div id="userlist-content">
+        <div class="bg-light p-3" id="comment_<?= $id ?>">
+            <div class="comment" id="comments_area_<?= $id ?>">
+                <?= $output ?>
             </div>
+            <?= Form::widget(['content' => $content]); ?>
         </div>
     </div>
-<?php \humhub\widgets\ModalDialog::end() ?>
-<script type="text/javascript">
 
+<?php Modal::endDialog() ?>
+
+<script <?= Html::nonce() ?>>
     // scroll to top of list
     $(".comment-modal-body").animate({scrollTop: 0}, 200);
 
+    <?php if(empty(trim((string) $output))) : ?>
+    $('#comment_<?= $id ?>').find('.comment_create hr').hide();
+    <?php endif; ?>
 </script>
-
-

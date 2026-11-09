@@ -8,43 +8,47 @@
 
 namespace humhub\modules\friendship\models;
 
+use humhub\components\ActiveRecord;
 use humhub\modules\user\models\User;
 use humhub\modules\friendship\FriendshipEvent;
 use humhub\modules\friendship\notifications\RequestDeclined;
 use humhub\modules\friendship\notifications\Request;
 use humhub\modules\friendship\notifications\RequestApproved;
+use yii\db\ActiveQuery;
+use yii\db\Expression;
+use yii\db\IntegrityException;
+use yii\db\Query;
 
 /**
  * This is the model class for table "user_friendship".
  *
- * @property integer $id
- * @property integer $user_id
- * @property integer $friend_user_id
+ * @property int $id
+ * @property int $user_id
+ * @property int $friend_user_id
  * @property string $created_at
  *
  * @property User $friendUser
  * @property User $user
  */
-class Friendship extends \humhub\components\ActiveRecord
+class Friendship extends ActiveRecord
 {
+    /**
+     * @event \humhub\modules\friendship\FriendshipEvent
+     */
+    public const EVENT_FRIENDSHIP_CREATED = 'friendshipCreated';
 
     /**
      * @event \humhub\modules\friendship\FriendshipEvent
      */
-    const EVENT_FRIENDSHIP_CREATED = 'friendshipCreated';
-
-    /**
-     * @event \humhub\modules\friendship\FriendshipEvent
-     */
-    const EVENT_FRIENDSHIP_REMOVED = 'friendshipRemoved';
+    public const EVENT_FRIENDSHIP_REMOVED = 'friendshipRemoved';
 
     /**
      * Friendship States
      */
-    const STATE_NONE = 0;
-    const STATE_FRIENDS = 1;
-    const STATE_REQUEST_RECEIVED = 2;
-    const STATE_REQUEST_SENT = 3;
+    public const STATE_NONE = 0;
+    public const STATE_FRIENDS = 1;
+    public const STATE_REQUEST_RECEIVED = 2;
+    public const STATE_REQUEST_SENT = 3;
 
     /**
      * @inheritdoc
@@ -62,7 +66,7 @@ class Friendship extends \humhub\components\ActiveRecord
         return [
             [['user_id', 'friend_user_id'], 'required'],
             [['user_id', 'friend_user_id'], 'integer'],
-            [['user_id', 'friend_user_id'], 'unique', 'targetAttribute' => ['user_id', 'friend_user_id'], 'message' => 'The combination of User ID and Friend User ID has already been taken.']
+            [['user_id', 'friend_user_id'], 'unique', 'targetAttribute' => ['user_id', 'friend_user_id'], 'message' => 'The combination of User ID and Friend User ID has already been taken.'],
         ];
     }
 
@@ -80,19 +84,19 @@ class Friendship extends \humhub\components\ActiveRecord
     }
 
     /**
-     * @return \yii\db\ActiveQuery
+     * @return ActiveQuery
      */
     public function getFriendUser()
     {
-        return $this->hasOne(User::className(), ['id' => 'friend_user_id']);
+        return $this->hasOne(User::class, ['id' => 'friend_user_id']);
     }
 
     /**
-     * @return \yii\db\ActiveQuery
+     * @return ActiveQuery
      */
     public function getUser()
     {
-        return $this->hasOne(User::className(), ['id' => 'user_id']);
+        return $this->hasOne(User::class, ['id' => 'user_id']);
     }
 
     /**
@@ -126,10 +130,10 @@ class Friendship extends \humhub\components\ActiveRecord
 
     /**
      * Returns the friendship state between to users
-     * 
+     *
      * @param User $user
      * @param User $friend
-     * 
+     *
      * @return int the request state see self::STATE_*
      */
     public static function getStateForUser($user, $friend)
@@ -149,51 +153,69 @@ class Friendship extends \humhub\components\ActiveRecord
 
     /**
      * Returns a query for friends of a user
-     * 
-     * @return \yii\db\ActiveQuery
-     * @param type $user
+     *
+     * @param User $user
+     * @return ActiveQuery
      */
-    public static function getFriendsQuery($user)
+    public static function getFriendsQuery(User $user)
     {
         $query = User::find();
 
         // Users which received a friend requests from given user
         $query->leftJoin('user_friendship recv', 'user.id=recv.friend_user_id AND recv.user_id=:userId', [':userId' => $user->id]);
-        $query->andWhere(['IS NOT', 'recv.id', new \yii\db\Expression('NULL')]);
+        $query->andWhere(['IS NOT', 'recv.id', new Expression('NULL')]);
 
         // Users which send a friend request to given user
         $query->leftJoin('user_friendship snd', 'user.id=snd.user_id AND snd.friend_user_id=:userId', [':userId' => $user->id]);
-        $query->andWhere(['IS NOT', 'snd.id', new \yii\db\Expression('NULL')]);
+        $query->andWhere(['IS NOT', 'snd.id', new Expression('NULL')]);
 
         return $query;
     }
 
     /**
-     * Returns a query for sent and not approved friend requests of an user
-     * 
-     * @return \yii\db\ActiveQuery
-     * @param type $user
+     * Returns a query selecting container ids of users the given $user has a friendship relation.
+     *
+     * @param User $user
+     * @return Query
+     * @since 1.8
      */
-    public static function getSentRequestsQuery($user)
+    public static function getFriendshipContainerIdQuery(User $user)
+    {
+        return (new Query())
+            ->select('ufr.contentcontainer_id AS id')
+            ->distinct()
+            ->from('user ufr')
+            ->indexBy('id')
+            ->innerJoin('user_friendship recv', 'ufr.id = recv.friend_user_id AND recv.user_id = :userId', [':userId' => $user->id])
+            ->innerJoin('user_friendship snd', 'ufr.id = snd.user_id AND snd.friend_user_id = :userId', [':userId' => $user->id]);
+    }
+
+    /**
+     * Returns a query for sent and not approved friend requests of an user
+     *
+     * @param User $user
+     * @return ActiveQuery
+     */
+    public static function getSentRequestsQuery(User $user)
     {
         $query = User::find();
 
         // Users which received a friend requests from given user
         $query->leftJoin('user_friendship recv', 'user.id=recv.friend_user_id AND recv.user_id=:userId', [':userId' => $user->id]);
-        $query->andWhere(['IS NOT', 'recv.id', new \yii\db\Expression('NULL')]);
+        $query->andWhere(['IS NOT', 'recv.id', new Expression('NULL')]);
 
         // Users which NOT send a friend request to given user
         $query->leftJoin('user_friendship snd', 'user.id=snd.user_id AND snd.friend_user_id=:userId', [':userId' => $user->id]);
-        $query->andWhere(['IS', 'snd.id', new \yii\db\Expression('NULL')]);
+        $query->andWhere(['IS', 'snd.id', new Expression('NULL')]);
 
         return $query;
     }
 
     /**
      * Returns a query for received and not responded friend requests of an user
-     * 
+     *
      * @param User $user
-     * @return \yii\db\ActiveQuery
+     * @return ActiveQuery
      */
     public static function getReceivedRequestsQuery($user)
     {
@@ -201,32 +223,56 @@ class Friendship extends \humhub\components\ActiveRecord
 
         // Users which NOT received a friend requests from given user
         $query->leftJoin('user_friendship recv', 'user.id=recv.friend_user_id AND recv.user_id=:userId', [':userId' => $user->id]);
-        $query->andWhere(['IS', 'recv.id', new \yii\db\Expression('NULL')]);
+        $query->andWhere(['IS', 'recv.id', new Expression('NULL')]);
 
         // Users which send a friend request to given user
         $query->leftJoin('user_friendship snd', 'user.id=snd.user_id AND snd.friend_user_id=:userId', [':userId' => $user->id]);
-        $query->andWhere(['IS NOT', 'snd.id', new \yii\db\Expression('NULL')]);
+        $query->andWhere(['IS NOT', 'snd.id', new Expression('NULL')]);
 
         return $query;
     }
 
     /**
      * Adds a friendship or sends a request
-     * 
+     *
      * @param User $user
      * @param User $friend
+     * @return bool
      */
     public static function add($user, $friend)
     {
         $friendship = new Friendship();
         $friendship->user_id = $user->id;
         $friendship->friend_user_id = $friend->id;
-        return $friendship->save();
+
+        try {
+            $saved = $friendship->save();
+        } catch (IntegrityException $e) {
+            // Concurrent request may have already created this friendship (race on
+            // the unique index) - verify before treating as success, don't swallow other errors.
+            $record = static::find()->where([
+                'user_id' => $user->id,
+                'friend_user_id' => $friend->id,
+            ]);
+
+            if (!$record->exists()) {
+                throw $e;
+            }
+
+            $saved = true;
+        }
+
+        if ($saved) {
+            $friend->follow($user, false);
+            return true;
+        }
+
+        return false;
     }
 
     /**
      * Cancels a friendship or request to a friend
-     * 
+     *
      * @param User $user
      * @param User $friend
      */
@@ -250,7 +296,7 @@ class Friendship extends \humhub\components\ActiveRecord
         if ($myFriendship !== null && $friendsFriendship !== null) {
             // Trigger event is friendship was mutual
             FriendshipEvent::trigger(Friendship::class, Friendship::EVENT_FRIENDSHIP_REMOVED, new FriendshipEvent([
-                'user1' => $user, 'user2' => $friend
+                'user1' => $user, 'user2' => $friend,
             ]));
         }
     }

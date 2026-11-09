@@ -8,38 +8,49 @@
 
 namespace humhub\modules\admin\widgets;
 
+use humhub\helpers\ControllerHelper;
+use humhub\modules\admin\permissions\ManageSettings;
+use humhub\modules\admin\permissions\ManageSpaces;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\modules\ui\menu\widgets\TabMenu;
 use Yii;
 use yii\helpers\Url;
-use humhub\modules\admin\permissions\ManageSpaces;
-use humhub\modules\admin\permissions\ManageSettings;
 
 /**
  * Space Administration Menu
  *
  * @author Luke
  */
-class SpaceMenu extends \humhub\widgets\BaseMenu
+class SpaceMenu extends TabMenu
 {
-
-    public $template = "@humhub/widgets/views/tabMenu";
-    public $type = "adminUserSubNavigation";
-
+    /**
+     * @inheritdoc
+     */
     public function init()
     {
-        $this->addItem([
-            'label' => Yii::t('AdminModule.views_space_index', 'Spaces'),
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('AdminModule.space', 'Overview'),
             'url' => Url::toRoute(['/admin/space/index']),
             'sortOrder' => 100,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'space' && Yii::$app->controller->action->id == 'index'),
-            'isVisible' => Yii::$app->user->can(new ManageSpaces())
-        ]);
-        $this->addItem([
-            'label' => Yii::t('AdminModule.views_space_index', 'Settings'),
+            'isActive' => ControllerHelper::isActivePath('admin', 'space', 'index'),
+            'isVisible' => Yii::$app->user->can(ManageSpaces::class),
+        ]));
+
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('AdminModule.space', 'Settings'),
             'url' => Url::toRoute(['/admin/space/settings']),
             'sortOrder' => 200,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'space' && Yii::$app->controller->action->id == 'settings'),
-            'isVisible' => Yii::$app->user->can(new ManageSettings())
-        ]);
+            'isActive' => ControllerHelper::isActivePath('admin', 'space', 'settings'),
+            'isVisible' => Yii::$app->user->can(ManageSettings::class),
+        ]));
+
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('AdminModule.space', 'Permissions'),
+            'url' => Url::toRoute(['/admin/space/permissions']),
+            'sortOrder' => 300,
+            'isActive' => ControllerHelper::isActivePath('admin', 'space', 'permissions'),
+            'isVisible' => Yii::$app->user->can(ManageSettings::class),
+        ]));
 
         parent::init();
     }

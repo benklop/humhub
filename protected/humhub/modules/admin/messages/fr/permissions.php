@@ -1,15 +1,17 @@
 <?php
-return array (
-  'Access Admin Information' => 'Accéder aux informations d\'administration',
-  'Can access the \'Administration -> Information\' section.' => 'Vous pouvez accéder à la section \'Administration -> Informations\'',
-  'Can manage spaces within the \'Administration -> Spaces\' section (create/edit/delete).' => 'Vous pouvez gérer les espaces dans la section \'administration -> espaces (créé, éditer, supprimer). ',
-  'Can manage user- space- and general-settings.' => 'Vous pouvez gérer utilisateurs, espaces et paramètres généraux',
-  'Can manage users and groups' => 'Vous pouvez gérer utilisateurs et groupes',
-  'Can manage users and user profiles.' => 'Vous pouvez gérer les profils d\'utilisateurs.',
-  'Can manage modules within the \'Administration ->  Modules\' section.' => 'Vous pouvez gérer les modules dans la section \'Administration -> Modules\'.',
-  'Manage Groups' => 'Gérer les groupes',
-  'Manage Modules' => 'Gérer les modules',
-  'Manage Settings' => 'Gérer les paramètres',
-  'Manage Spaces' => 'Gérer les espaces',
-  'Manage Users' => 'Gérer les utilisateurs',
-);
+return [
+  'Access Admin Information' => 'Accès aux informations d\'administration',
+  'Can access the \'Administration -> Information\' section.' => 'Accéder à la section \'Administration &gt; Informations\'',
+  'Can manage (e.g. edit or delete) all content (even private)' => 'Gérer (modifier, supprimer,…) tout contenu, même privé',
+  'Can manage Spaces within the \'Administration -> Spaces\' section.' => 'Gérer les espaces dans la section \'Administration &gt; Espaces\'',
+  'Can manage general settings and module settings.' => 'Permet de gérer les paramètres généraux et les paramètres des modules.',
+  'Can manage modules within the \'Administration ->  Modules\' section.' => 'Gérer les modules dans la section \'Administration &gt; Modules\'',
+  'Can manage users and groups' => 'Gérer les utilisateurs et les groupes',
+  'Can manage users and user profiles.' => 'Gérer les comptes et les profils des utilisateurs et utilisatrices',
+  'Manage All Content' => 'Gestion du contenu entier',
+  'Manage Groups' => 'Gestion des groupes',
+  'Manage Modules' => 'Gestion des modules',
+  'Manage Settings' => 'Gestion des paramètres',
+  'Manage Spaces' => 'Gestion des espaces',
+  'Manage Users' => 'Gestion des utilisateurs et utilisatrices',
+];

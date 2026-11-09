@@ -17,20 +17,13 @@ use yii\web\AssetBundle;
  */
 class JqueryHighlightAsset extends AssetBundle
 {
+    /**
+     * @inheritdoc
+     */
+    public $sourcePath = '@npm/jquery-highlight';
 
     /**
      * @inheritdoc
      */
-    public $basePath = '@webroot-static';
-
-    /**
-     * @inheritdoc
-     */
-    public $baseUrl = '@web-static';
-
-    /**
-     * @inheritdoc
-     */
-    public $js = ['js/jquery.highlight.min.js'];
-
+    public $js = ['jquery.highlight.js'];
 }

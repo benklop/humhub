@@ -8,10 +8,16 @@
 
 namespace humhub\modules\notification\controllers;
 
-use Yii;
+use humhub\components\access\ControllerAccess;
 use humhub\components\Controller;
-use humhub\modules\notification\models\Notification;
+use humhub\modules\notification\components\BaseNotification;
 use humhub\modules\notification\models\forms\FilterForm;
+use humhub\modules\notification\models\Notification;
+use humhub\modules\notification\widgets\OverviewWidget;
+use Throwable;
+use Yii;
+use yii\db\IntegrityException;
+use yii\db\StaleObjectException;
 
 /**
  * ListController
@@ -21,66 +27,93 @@ use humhub\modules\notification\models\forms\FilterForm;
  */
 class OverviewController extends Controller
 {
+    public const PAGINATION_PAGE_SIZE = 20;
 
     /**
      * @inheritdoc
      */
-    public function behaviors()
+    protected function getAccessRules()
     {
         return [
-            'acl' => [
-                'class' => \humhub\components\behaviors\AccessControl::className(),
-            ]
+            [ControllerAccess::RULE_LOGGED_IN_ONLY],
         ];
     }
 
     /**
-     * Returns a List of all notifications for the session user
+     * @param bool $reload if the request is a reload request
+     * @return string
+     * @throws Throwable
+     * @throws StaleObjectException
      */
-    public function actionIndex()
+    public function actionIndex($reload = false)
     {
-        if (Yii::$app->user->isGuest) {
-            return Yii::$app->user->loginRequired();
-        }
-
-        $pageSize = 10;
-        $notifications = [];
-
-        $filterForm = new FilterForm();
-        $filterForm->load(Yii::$app->request->get());
-
-        $query = Notification::findGrouped();
+        $filterForm = $this->loadFilterForm($reload);
 
         if ($filterForm->hasFilter()) {
-            $query->andFilterWhere(['not in', 'class', $filterForm->getExcludeClassFilter()]);
+            $overview = OverviewWidget::widget([
+                'pagination' => $filterForm->getPagination(self::PAGINATION_PAGE_SIZE),
+                'notifications' => $this->prepareNotifications($filterForm->createQuery()->all()),
+            ]);
         } else {
-            return $this->render('index', [
-                        'notificationEntries' => [],
-                        'filterForm' => $filterForm,
-                        'pagination' => null,
-                        'notifications' => $notifications
+            $overview = OverviewWidget::widget([
+                'notifications' => [],
             ]);
         }
 
-        $countQuery = clone $query;
-        $pagination = new \yii\data\Pagination(['totalCount' => $countQuery->count(), 'pageSize' => $pageSize]);
-
-        //Reset pagegination after new filter set
-        if (Yii::$app->request->post()) {
-            $pagination->setPage(0);
-        }
-
-        $query->offset($pagination->offset)->limit($pagination->limit);
-
-        foreach ($query->all() as $notificationRecord) {
-            $notifications[] = $notificationRecord->getClass();
-        }
-
-        return $this->render('index', array(
-                    'notifications' => $notifications,
-                    'filterForm' => $filterForm,
-                    'pagination' => $pagination
-        ));
+        return $reload
+            ? $this->renderAjaxPartial($overview)
+            : $this->render('index', [
+                'overview' => $overview,
+                'filterForm' => $filterForm,
+            ]);
     }
 
+    /**
+     * Loads the filters from the request into the form
+     *
+     * @param bool $reload
+     * @return FilterForm
+     */
+    private function loadFilterForm(bool $reload = false): FilterForm
+    {
+        $filterForm = new FilterForm();
+
+        if ($reload) {
+            $filterForm->load(Yii::$app->request->post());
+        } else {
+            $filterForm->load(Yii::$app->request->get());
+        }
+
+        return $filterForm;
+    }
+
+    /**
+     * Validates given notifications and returns a list of notification models of all valid notifications.
+     *
+     * @param $notifications Notification[]
+     * @return array
+     * @throws Throwable
+     * @throws StaleObjectException
+     */
+    private function prepareNotifications($notifications)
+    {
+        $result = [];
+        foreach ($notifications as $notificationRecord) {
+            /* @var $notificationRecord Notification */
+
+            try {
+                $baseModel = $notificationRecord->getBaseModel();
+
+                if ($baseModel instanceof BaseNotification && $baseModel->validate()) {
+                    $result[] = $baseModel;
+                } else {
+                    throw new IntegrityException('Invalid base model (' . $notificationRecord->class . ') found for notification');
+                }
+            } catch (IntegrityException $ex) {
+                $notificationRecord->delete();
+                Yii::warning('Deleted inconsistent notification with id ' . $notificationRecord->id . '. ' . $ex->getMessage());
+            }
+        }
+        return $result;
+    }
 }

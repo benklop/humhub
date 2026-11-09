@@ -8,7 +8,11 @@
 
 namespace humhub\modules\notification\targets;
 
+use Exception;
 use Yii;
+use yii\base\BaseObject;
+use yii\base\InvalidConfigException;
+use yii\di\Instance;
 use humhub\modules\user\models\User;
 use humhub\components\rendering\Renderer;
 use humhub\modules\notification\components\BaseNotification;
@@ -21,9 +25,8 @@ use humhub\modules\notification\components\NotificationCategory;
  *
  * @author buddha
  */
-abstract class BaseTarget extends \yii\base\Object
+abstract class BaseTarget extends BaseObject
 {
-
     /**
      * Unique target id has to be defined by subclasses.
      * @var string
@@ -55,9 +58,17 @@ abstract class BaseTarget extends \yii\base\Object
     /**
      * Will be used as default enable setting, if there is no user specific setting and no
      * global setting and also no default setting for this target for a given NotificationCategory.
-     * @var boolean
+     * @var bool
      */
     public $defaultSetting = false;
+
+    /**
+     * This flag can be used to deactivate a target within the configuration.
+     *
+     * @var bool
+     * @since 1.4
+     */
+    public $active = true;
 
     /**
      * @inheritdoc
@@ -71,14 +82,15 @@ abstract class BaseTarget extends \yii\base\Object
     /**
      * @return string Human readable title for views.
      */
-    public abstract function getTitle();
+    abstract public function getTitle();
 
     /**
-     * @return \humhub\components\rendering\Renderer default renderer for this target.
+     * @return Renderer default renderer for this target.
+     * @throws InvalidConfigException
      */
     public function getRenderer()
     {
-        return \yii\di\Instance::ensure($this->renderer, Renderer::class);
+        return Instance::ensure($this->renderer, Renderer::class);
     }
 
     /**
@@ -89,13 +101,13 @@ abstract class BaseTarget extends \yii\base\Object
      *
      * @param BaseNotification $notification
      */
-    public abstract function handle(BaseNotification $notification, User $user);
+    abstract public function handle(BaseNotification $notification, User $user);
 
     /**
      * Used to acknowledge the seding/processing of the given $notification.
      *
      * @param BaseNotification $notification notification to be acknowledged
-     * @param boolean $state true if successful otherwise false
+     * @param bool $state true if successful otherwise false
      */
     public function acknowledge(BaseNotification $notification, $state = true)
     {
@@ -106,13 +118,14 @@ abstract class BaseTarget extends \yii\base\Object
     }
 
     /**
-     * @return boolean Check if the given $notification has already been processed.
+     * @return bool Check if the given $notification has already been processed.
      */
     public function isAcknowledged(BaseNotification $notification)
     {
         if ($this->acknowledgeFlag && $notification->record->hasAttribute($this->acknowledgeFlag)) {
             return $notification->record->getAttribute($this->acknowledgeFlag);
         }
+
         return false;
     }
 
@@ -151,7 +164,7 @@ abstract class BaseTarget extends \yii\base\Object
             } else {
                 $this->acknowledge($notification, false);
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Yii::error($e);
             $this->acknowledge($notification, false);
         }
@@ -188,11 +201,14 @@ abstract class BaseTarget extends \yii\base\Object
      *
      * If a subclass does not overwrite this function it will be activated for all users by default.
      *
+     * Subclasses should always check `parent::isActive()`
+     *
      * @param User $user
+     * @return bool
      */
-    public function isActive(User $user = null)
+    public function isActive(?User $user = null)
     {
-        return true;
+        return $this->active;
     }
 
     /**
@@ -204,25 +220,26 @@ abstract class BaseTarget extends \yii\base\Object
      *
      * @param BaseNotification $notification
      * @param User $user
-     * @see BaseTarget::isActive()
+     * @return bool
      * @see BaseTarget::isCategoryEnabled()
-     * @return boolean
+     * @see BaseTarget::isActive()
      */
-    public function isEnabled(BaseNotification $notification, User $user = null)
+    public function isEnabled(BaseNotification $notification, ?User $user = null)
     {
         if (!$this->isActive($user)) {
             return false;
         }
 
         $category = $notification->getCategory();
+
         return ($category) ? $this->isCategoryEnabled($category, $user) : $this->defaultSetting;
     }
 
     /**
      * Checks if the settings for this target are editable.
-     * @return boolean
+     * @return bool
      */
-    public function isEditable(user $user = null)
+    public function isEditable(?User $user = null)
     {
         return true;
     }
@@ -232,9 +249,9 @@ abstract class BaseTarget extends \yii\base\Object
      *
      * @param NotificationCategory $category
      * @param User $user
-     * @return boolean
+     * @return bool
      */
-    public function isCategoryEnabled(NotificationCategory $category, User $user = null)
+    public function isCategoryEnabled(NotificationCategory $category, ?User $user = null)
     {
         if (!$category->isVisible($user)) {
             return false;
@@ -254,5 +271,4 @@ abstract class BaseTarget extends \yii\base\Object
 
         return ($enabled === null) ? $this->defaultSetting : boolval($enabled);
     }
-
 }

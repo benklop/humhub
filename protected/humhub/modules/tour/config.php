@@ -1,14 +1,16 @@
 <?php
 
 use humhub\modules\dashboard\widgets\Sidebar;
+use humhub\modules\tour\Events;
 use humhub\modules\tour\Module;
+use yii\web\User;
 
 return [
     'id' => 'tour',
-    'class' => Module::className(),
+    'class' => Module::class,
     'isCoreModule' => true,
-    'events' => array(
-        array('class' => Sidebar::className(), 'event' => Sidebar::EVENT_INIT, 'callback' => array(Module::className(), 'onDashboardSidebarInit')),
-    ),
+    'events' => [
+        [Sidebar::class, Sidebar::EVENT_INIT, [Events::class, 'onDashboardSidebarInit']],
+        [User::class, User::EVENT_BEFORE_LOGIN, [Events::class, 'onUserBeforeLogin']],
+    ],
 ];
-?>

@@ -8,35 +8,41 @@
 
 namespace humhub\modules\user\models;
 
+use Exception;
 use humhub\components\ActiveRecord;
-use humhub\modules\user\events\FollowEvent;
+use humhub\components\behaviors\PolymorphicRelation;
 use humhub\modules\activity\models\Activity;
+use humhub\modules\activity\services\ActivityManager;
 use humhub\modules\space\models\Space;
-use humhub\modules\user\models\User;
+use humhub\modules\user\activities\FollowActivity;
+use humhub\modules\user\components\ActiveQueryUser;
+use humhub\modules\user\events\FollowEvent;
+use humhub\modules\user\notifications\Followed;
 use Yii;
+use yii\base\InvalidConfigException;
 use yii\db\ActiveQuery;
+use yii\db\Query;
 
 /**
  * This is the model class for table "user_follow".
  *
- * @property integer $id
+ * @property int $id
  * @property string $object_model
- * @property integer $object_id
- * @property integer $user_id
- * @property integer $send_notifications
+ * @property int $object_id
+ * @property int $user_id
+ * @property int $send_notifications
  */
-class Follow extends \yii\db\ActiveRecord
+class Follow extends ActiveRecord
 {
+    /**
+     * @event \humhub\modules\user\events\FollowEvent
+     */
+    public const EVENT_FOLLOWING_CREATED = 'followCreated';
 
     /**
      * @event \humhub\modules\user\events\FollowEvent
      */
-    const EVENT_FOLLOWING_CREATED = 'followCreated';
-
-    /**
-     * @event \humhub\modules\user\events\FollowEvent
-     */
-    const EVENT_FOLLOWING_REMOVED = 'followRemoved';
+    public const EVENT_FOLLOWING_REMOVED = 'followRemoved';
 
     /**
      * @inheritdoc
@@ -64,11 +70,11 @@ class Follow extends \yii\db\ActiveRecord
     {
         return [
             [
-                'class' => \humhub\components\behaviors\PolymorphicRelation::className(),
+                'class' => PolymorphicRelation::class,
                 'mustBeInstanceOf' => [
-                    \yii\db\ActiveRecord::className(),
-                ]
-            ]
+                    ActiveRecord::class,
+                ],
+            ],
         ];
     }
 
@@ -81,26 +87,23 @@ class Follow extends \yii\db\ActiveRecord
             [['object_model', 'object_id', 'user_id'], 'required'],
             [['object_id', 'user_id'], 'integer'],
             [['send_notifications'], 'boolean'],
-            [['object_model'], 'string', 'max' => 100]
+            [['object_model'], 'string', 'max' => 100],
         ];
     }
 
     /**
      * @inheritdoc
+     * @throws InvalidConfigException
      */
     public function afterSave($insert, $changedAttributes)
     {
-        if ($insert && $this->object_model == User::className()) {
-            \humhub\modules\user\notifications\Followed::instance()
-                    ->from($this->user)
-                    ->about($this)
-                    ->send($this->getTarget());
+        if ($insert && $this->send_notifications && $this->object_model == User::class) {
+            Followed::instance()
+                ->from($this->user)
+                ->about($this)
+                ->send($this->getTarget());
 
-            \humhub\modules\user\activities\UserFollow::instance()
-                    ->from($this->user)
-                    ->container($this->user)
-                    ->about($this)
-                    ->save();
+            ActivityManager::dispatch(FollowActivity::class, $this->getTarget(), $this->user);
         }
 
         $this->trigger(Follow::EVENT_FOLLOWING_CREATED, new FollowEvent(['user' => $this->user, 'target' => $this->getTarget()]));
@@ -113,16 +116,29 @@ class Follow extends \yii\db\ActiveRecord
      */
     public function beforeDelete()
     {
-        if($this->getTarget()) {
+        if ($this->getTarget()) {
             $this->trigger(Follow::EVENT_FOLLOWING_REMOVED, new FollowEvent(['user' => $this->user, 'target' => $this->getTarget()]));
 
             // ToDo: Handle this via event of User Module
-            if ($this->object_model == User::className()) {
-                $notification = new \humhub\modules\user\notifications\Followed();
-                $notification->originator = $this->user;
-                $notification->delete($this->getTarget());
+            if ($this->object_model === User::class) {
+                $target = $this->getTarget();
 
-                foreach (Activity::findAll(['object_model' => $this->className(), 'object_id' => $this->id]) as $activity) {
+                $notification = new Followed();
+                $notification->originator = $this->user;
+                $notification->delete($target);
+
+                // The FollowActivity is stored against the followed user's content
+                // container (see ActivityManager::dispatch); the activity table no
+                // longer has the polymorphic object_model/object_id columns.
+                // Columns are qualified because ActiveQueryActivity left-joins the
+                // content and user tables, which share these column names.
+                foreach (
+                    Activity::findAll([
+                        'activity.class' => FollowActivity::class,
+                        'activity.contentcontainer_id' => $target->contentcontainer_id,
+                        'activity.created_by' => $this->user_id,
+                    ]) as $activity
+                ) {
                     $activity->delete();
                 }
             }
@@ -132,17 +148,17 @@ class Follow extends \yii\db\ActiveRecord
 
     public function getUser()
     {
-        return $this->hasOne(\humhub\modules\user\models\User::className(), ['id' => 'user_id']);
+        return $this->hasOne(User::class, ['id' => 'user_id']);
     }
 
     public function getTarget()
     {
         try {
             $targetClass = $this->object_model;
-            if ($targetClass != "" && is_subclass_of($targetClass, \yii\db\ActiveRecord::class)) {
+            if ($targetClass != "" && is_subclass_of($targetClass, ActiveRecord::class)) {
                 return $targetClass::findOne(['id' => $this->object_id]);
             }
-        } catch(\Exception $e) {
+        } catch (Exception $e) {
             // Avoid errors in integrity check
             Yii::error($e);
         }
@@ -152,48 +168,92 @@ class Follow extends \yii\db\ActiveRecord
     /**
      * Returns all followed spaces of the given user as ActiveQuery.
      * If $withNotifications is set only follower with the given send_notifications setting are returned.
-     * 
-     * @param \humhub\modules\user\models\User $user
-     * @param boolean|null $withNotifications by notification setting (default is null without notification handling)
-     * @return \yii\db\ActiveQuery Space query of all followed spaces
+     *
+     * @param User $user
+     * @param bool|null $withNotifications by notification setting (default is null without notification handling)
+     * @return ActiveQuery Space query of all followed spaces
      * @since 1.2
      */
     public static function getFollowedSpacesQuery(User $user, $withNotifications = null)
     {
         $subQuery = self::find()
-                ->where(['user_follow.user_id' => $user->id, 'user_follow.object_model' => Space::class])
-                ->andWhere('user_follow.object_id=space.id');
-        
+            ->where(['user_follow.user_id' => $user->id, 'user_follow.object_model' => Space::class])
+            ->andWhere('user_follow.object_id=space.id');
+
         if ($withNotifications === true) {
             $subQuery->andWhere(['user_follow.send_notifications' => 1]);
-        } else if ($withNotifications === false) {
+        } elseif ($withNotifications === false) {
             $subQuery->andWhere(['user_follow.send_notifications' => 0]);
         }
-        
-        return Space::find()->where(['exists', $subQuery]);
+
+        return Space::find()
+            ->where(['exists', $subQuery])
+            ->defaultOrderBy();
+    }
+
+    /**
+     * @param User $user
+     * @param null $withNotifications
+     * @return ActiveQueryUser
+     */
+    public static function getFollowedUserQuery(User $user, $withNotifications = null)
+    {
+        $subQuery = self::find()
+            ->where(['user_follow.user_id' => $user->id, 'user_follow.object_model' => User::class])
+            ->andWhere('user_follow.object_id=user.id');
+
+        if ($withNotifications === true) {
+            $subQuery->andWhere(['user_follow.send_notifications' => 1]);
+        } elseif ($withNotifications === false) {
+            $subQuery->andWhere(['user_follow.send_notifications' => 0]);
+        }
+
+        return User::find()->where(['exists', $subQuery]);
+    }
+
+    /**
+     * Returns a query searching for all container ids the user is following. If $containerClass is given we only search
+     * for a certain container type.
+     *
+     * @param User $user
+     * @param string $containerClass
+     * @return Query
+     * @since 1.8
+     */
+    public static function getFollowedContainerIdQuery(User $user, $containerClass = null)
+    {
+        return (new Query())
+            ->select("contentcontainer.id AS id")
+            ->from('user_follow')
+            ->innerJoin('contentcontainer', 'contentcontainer.pk = user_follow.object_id AND contentcontainer.class = user_follow.object_model')
+            ->where(['user_follow.user_id' => $user->id])
+            ->indexBy('id')
+            ->andWhere($containerClass
+                ? ['user_follow.object_model' => $containerClass]
+                : ['OR', ['user_follow.object_model' => Space::class], ['user_follow.object_model' => User::class]]);
     }
 
     /**
      * Returns all active users following the given $target record.
      * If $withNotifications is set only follower with the given send_notifications setting are returned.
-     * 
-     * @param \yii\db\ActiveRecord $target
-     * @param boolean $withNotifications
-     * @return ActiveQuery
+     *
+     * @param ActiveRecord $target
+     * @param bool $withNotifications
+     * @return ActiveQueryUser
      */
-    public static function getFollowersQuery(\yii\db\ActiveRecord $target, $withNotifications = null)
+    public static function getFollowersQuery(ActiveRecord $target, $withNotifications = null)
     {
         $subQuery = self::find()
-                ->where(['user_follow.object_model' => $target->className(), 'user_follow.object_id' => $target->getPrimaryKey()])
-                ->andWhere('user_follow.user_id=user.id');
-        
+            ->where(['user_follow.object_model' => $target::class, 'user_follow.object_id' => $target->getPrimaryKey()])
+            ->andWhere('user_follow.user_id=user.id');
+
         if ($withNotifications === true) {
             $subQuery->andWhere(['user_follow.send_notifications' => 1]);
-        } else if ($withNotifications === false) {
+        } elseif ($withNotifications === false) {
             $subQuery->andWhere(['user_follow.send_notifications' => 0]);
         }
-        
-        return User::find()->active()->andWhere(['exists', $subQuery]);
+
+        return User::find()->visible()->andWhere(['exists', $subQuery]);
     }
 
 }

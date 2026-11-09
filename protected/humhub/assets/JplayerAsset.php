@@ -17,11 +17,10 @@ use yii\web\AssetBundle;
  */
 class JplayerAsset extends AssetBundle
 {
-
     /**
      * @inheritdoc
      */
-    public $sourcePath = '@bower/jplayer/dist';
+    public $sourcePath = '@npm/jplayer/dist';
 
     /**
      * @inheritdoc

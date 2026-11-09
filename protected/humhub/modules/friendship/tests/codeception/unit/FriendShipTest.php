@@ -10,7 +10,6 @@ use humhub\modules\user\models\User;
 
 class FriendshipTest extends HumHubDbTestCase
 {
-
     use Specify;
 
     /**
@@ -22,45 +21,45 @@ class FriendshipTest extends HumHubDbTestCase
 
         $this->becomeUser('User2');
         $friendUser = User::findOne(['id' => 2]);
-        
-        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user), Friendship::STATE_NONE, 'Check Status before sent');
-        
+
+        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user->getIdentity()), Friendship::STATE_NONE, 'Check Status before sent');
+
         // Request Friendship
         $this->assertTrue(Friendship::add(Yii::$app->user->getIdentity(), $friendUser));
-        $this->assertMailSent(1, 'Friendship request mail sent.');
-        
+        $this->assertMailSent(1);
+
         $fiendship = Friendship::findOne(['user_id' => Yii::$app->user->id, 'friend_user_id' => 2]);
         $this->assertNotNull($fiendship, 'Friendship model persisted.');
-        $this->assertEquals(Friendship::getStateForUser(Yii::$app->user, $friendUser), Friendship::STATE_REQUEST_SENT, 'Check Sent Status');
-        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user), Friendship::STATE_REQUEST_RECEIVED, 'Check Received Status');
-        
+        $this->assertEquals(Friendship::getStateForUser(Yii::$app->user->getIdentity(), $friendUser), Friendship::STATE_REQUEST_SENT, 'Check Sent Status');
+        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user->getIdentity()), Friendship::STATE_REQUEST_RECEIVED, 'Check Received Status');
+
         // Accept friendship
         $this->assertTrue(Friendship::add($friendUser, Yii::$app->user->getIdentity()));
-        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user), Friendship::STATE_FRIENDS, 'Check Friend Status');
-        $this->assertMailSent(2, 'Friendship acknowledged mail sent.');
+        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user->getIdentity()), Friendship::STATE_FRIENDS, 'Check Friend Status');
+        $this->assertMailSent(2);
     }
-    
+
     public function testDeclineFriendShip()
     {
         Yii::$app->getModule('friendship')->settings->set('enable', 1);
-        
+
         $this->becomeUser('User2');
         $friendUser = User::findOne(['id' => 2]);
-        
-        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user), Friendship::STATE_NONE, 'Check Status before sent');
-        
+
+        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user->getIdentity()), Friendship::STATE_NONE, 'Check Status before sent');
+
         // Request Friendship
         $this->assertTrue(Friendship::add(Yii::$app->user->getIdentity(), $friendUser));
-        $this->assertMailSent(1, 'Friendship request mail sent.');
-        
+        $this->assertMailSent(1);
+
         $fiendship = Friendship::findOne(['user_id' => Yii::$app->user->id, 'friend_user_id' => 2]);
         $this->assertNotNull($fiendship, 'Friendship model persisted.');
-        $this->assertEquals(Friendship::getStateForUser(Yii::$app->user, $friendUser), Friendship::STATE_REQUEST_SENT, 'Check Sent Status');
-        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user), Friendship::STATE_REQUEST_RECEIVED, 'Check Received Status');
-        
+        $this->assertEquals(Friendship::getStateForUser(Yii::$app->user->getIdentity(), $friendUser), Friendship::STATE_REQUEST_SENT, 'Check Sent Status');
+        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user->getIdentity()), Friendship::STATE_REQUEST_RECEIVED, 'Check Received Status');
+
         // Cancel request
         Friendship::cancel($friendUser, Yii::$app->user->getIdentity());
-        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user), Friendship::STATE_NONE, 'Check Friend Status');
-        $this->assertMailSent(2, 'Friendship acknowledged mail sent.');
+        $this->assertEquals(Friendship::getStateForUser($friendUser, Yii::$app->user->getIdentity()), Friendship::STATE_NONE, 'Check Friend Status');
+        $this->assertMailSent(2);
     }
 }

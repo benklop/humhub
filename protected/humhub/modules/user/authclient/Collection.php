@@ -8,9 +8,12 @@
 
 namespace humhub\modules\user\authclient;
 
+use humhub\libs\ParameterEvent;
 use Yii;
+use yii\authclient\ClientInterface;
 use yii\base\Component;
-use yii\base\InvalidParamException;
+use yii\base\InvalidArgumentException;
+use yii\base\InvalidConfigException;
 
 /**
  * Extended AuthClient collection with event support
@@ -20,11 +23,15 @@ use yii\base\InvalidParamException;
  */
 class Collection extends Component
 {
+    /**
+     * @event Event an event raised before the clients are set.
+     */
+    public const EVENT_BEFORE_CLIENTS_SET = 'client_set_before';
 
     /**
      * @event Event an event raised after the clients are set.
      */
-    const EVENT_AFTER_CLIENTS_SET = 'client_set';
+    public const EVENT_AFTER_CLIENTS_SET = 'client_set';
 
     /**
      * @var array list of Auth clients with their configuration in format: 'clientId' => [...]
@@ -36,7 +43,8 @@ class Collection extends Component
      */
     public function setClients(array $clients)
     {
-        $this->_clients = array_merge($this->getDefaultClients(), $clients);
+        $this->trigger(self::EVENT_BEFORE_CLIENTS_SET, new ParameterEvent(['clients' => $clients]));
+        $this->_clients = array_merge($this->getDefaultClients(), $clients, $this->_clients);
         $this->trigger(self::EVENT_AFTER_CLIENTS_SET);
     }
 
@@ -55,13 +63,14 @@ class Collection extends Component
 
     /**
      * @param string $id service id.
+     * @param bool $load
      * @return ClientInterface auth client instance.
-     * @throws InvalidParamException on non existing client request.
+     * @throws InvalidConfigException
      */
     public function getClient($id, $load = true)
     {
         if (!array_key_exists($id, $this->_clients)) {
-            throw new InvalidParamException("Unknown auth client '{$id}'.");
+            throw new InvalidArgumentException("Unknown auth client '{$id}'.");
         }
         if (!is_object($this->_clients[$id]) && $load) {
             $this->_clients[$id] = $this->createClient($id, $this->_clients[$id]);
@@ -73,7 +82,7 @@ class Collection extends Component
     /**
      * Checks if client exists in the hub.
      * @param string $id client id.
-     * @return boolean whether client exist.
+     * @return bool whether client exist.
      */
     public function hasClient($id)
     {
@@ -84,7 +93,7 @@ class Collection extends Component
      * Sets a client by id and config
      *
      * @param string $id auth client id.
-     * @param array $config auth client instance configuration.
+     * @param array|ClientInterface $config auth client instance configuration.
      */
     public function setClient($id, $config)
     {
@@ -106,6 +115,7 @@ class Collection extends Component
      * @param string $id auth client id.
      * @param array $config auth client instance configuration.
      * @return ClientInterface auth client instance.
+     * @throws InvalidConfigException
      */
     protected function createClient($id, $config)
     {
@@ -122,17 +132,7 @@ class Collection extends Component
     protected function getDefaultClients()
     {
         $clients = [];
-
-        $clients['password'] = [
-            'class' => 'humhub\modules\user\authclient\Password'
-        ];
-
-        if (Yii::$app->getModule('user')->settings->get('auth.ldap.enabled')) {
-            $clients['ldap'] = [
-                'class' => 'humhub\modules\user\authclient\ZendLdapClient'
-            ];
-        }
-
+        $clients['local'] = ['class' => Password::class];
         return $clients;
     }
 

@@ -12,7 +12,6 @@ use humhub\modules\notification\components\NotificationCategory;
  */
 class MentionedNotificationCategory extends NotificationCategory
 {
-
     /**
      * @inheritdoc
      */
@@ -23,7 +22,7 @@ class MentionedNotificationCategory extends NotificationCategory
      */
     public function getTitle()
     {
-        return Yii::t('UserModule.notifications_FollowingNotificationCategory', 'Mentionings');
+        return Yii::t('UserModule.notification', 'Mentionings');
     }
 
     /**
@@ -31,7 +30,7 @@ class MentionedNotificationCategory extends NotificationCategory
      */
     public function getDescription()
     {
-        return Yii::t('UserModule.notifications_FollowingNotificationCategory', 'Receive Notifications when someone mentioned you in a post.');
+        return Yii::t('UserModule.notification', 'Receive Notifications when someone mentioned you in a post.');
     }
 
 }

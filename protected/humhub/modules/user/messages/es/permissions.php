@@ -1,5 +1,5 @@
 <?php
 return array (
-  'Allows access to your about page with personal information' => 'Permite accesar a tu página Acerca de con información personal',
-  'View your about page' => 'Ver tu página Acerca de',
+  'Can Access \'People\'' => 'No se pueda acceder a “Personas”',
+  'Can access \'People\' section.' => 'No se puede acceder a la sección “Personas”.',
 );

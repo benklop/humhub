@@ -8,12 +8,14 @@
 
 namespace humhub\modules\activity\models;
 
-use Yii;
-use yii\base\Model;
-use yii\base\Exception;
-use humhub\modules\activity\Module;
 use humhub\modules\activity\components\MailSummary;
+use humhub\modules\activity\Module;
+use humhub\modules\admin\permissions\ManageUsers;
+use humhub\modules\content\models\ContentContainerSetting;
 use humhub\modules\user\models\User;
+use Yii;
+use yii\base\Exception;
+use yii\base\Model;
 
 /**
  * MailSummaryForm
@@ -23,12 +25,11 @@ use humhub\modules\user\models\User;
  */
 class MailSummaryForm extends Model
 {
-
     /**
      * Space limit modes (include or exclude)
      */
-    const LIMIT_MODE_EXCLUDE = 0;
-    const LIMIT_MODE_INCLUDE = 1;
+    public const LIMIT_MODE_EXCLUDE = 0;
+    public const LIMIT_MODE_INCLUDE = 1;
 
     /**
      * @var array of selected activities to include
@@ -53,10 +54,10 @@ class MailSummaryForm extends Model
     /**
      * @var User the user when user settings should be loaded/saved
      */
-    public $user = null;
+    public $user;
 
     /**
-     * @var boolean indicates that custom user settings were loaded
+     * @var bool indicates that custom user settings were loaded
      */
     public $userSettingsLoaded = false;
 
@@ -103,8 +104,8 @@ class MailSummaryForm extends Model
     public function getLimitSpaceModes()
     {
         return [
-            MailSummaryForm::LIMIT_MODE_EXCLUDE => Yii::t('ActivityModule.base', 'Exclude spaces below from the mail summary'),
-            MailSummaryForm::LIMIT_MODE_INCLUDE => Yii::t('ActivityModule.base', 'Only include spaces below to the mail summary'),
+            static::LIMIT_MODE_EXCLUDE => Yii::t('ActivityModule.base', 'Exclude spaces below from the mail summary'),
+            static::LIMIT_MODE_INCLUDE => Yii::t('ActivityModule.base', 'Only include spaces below to the mail summary'),
         ];
     }
 
@@ -117,9 +118,10 @@ class MailSummaryForm extends Model
     {
         return [
             MailSummary::INTERVAL_NONE => Yii::t('ActivityModule.base', 'Never'),
-            MailSummary::INTERVAL_HOURY => Yii::t('ActivityModule.base', 'Hourly'),
+            MailSummary::INTERVAL_HOURLY => Yii::t('ActivityModule.base', 'Hourly'),
             MailSummary::INTERVAL_DAILY => Yii::t('ActivityModule.base', 'Daily'),
             MailSummary::INTERVAL_WEEKLY => Yii::t('ActivityModule.base', 'Weekly'),
+            MailSummary::INTERVAL_MONTHLY => Yii::t('ActivityModule.base', 'Monthly'),
         ];
     }
 
@@ -132,8 +134,8 @@ class MailSummaryForm extends Model
     {
         $contents = [];
 
-        foreach (Module::getConfigurableActivities() as $activity) {
-            $contents[$activity->className()] = $activity->getTitle() . ' - ' . $activity->getDescription();
+        foreach (Module::getConfigurableActivities() as $activityClass) {
+            $contents[$activityClass] = $activityClass::getTitle() . ' - ' . $activityClass::getDescription();
         }
 
         return $contents;
@@ -145,7 +147,7 @@ class MailSummaryForm extends Model
      * If the 'user' attribute is set, the user settings are loaded if present.
      * Otherwise the system defaults will be loaded.
      *
-     * @return boolean
+     * @return bool
      */
     public function loadCurrent()
     {
@@ -159,10 +161,12 @@ class MailSummaryForm extends Model
 
         $this->interval = $settingsManager->get('mailSummaryInterval');
         $this->limitSpacesMode = $settingsManager->get('mailSummaryLimitSpacesMode');
-        $this->limitSpaces = explode(',', $settingsManager->get('mailSummaryLimitSpaces'));
+        $mailSummaryLimitSpaces = $settingsManager->get('mailSummaryLimitSpaces');
+        $this->limitSpaces = (!empty($mailSummaryLimitSpaces)) ? explode(',', (string) $mailSummaryLimitSpaces) : [];
 
         // Since we store only disabled activities, we need to enable the difference
-        $suppressedActivities = explode(',', $settingsManager->get('mailSummaryActivitySuppress'));
+        $mailSummaryActivitySuppress = $settingsManager->get('mailSummaryActivitySuppress');
+        $suppressedActivities = (!empty($mailSummaryActivitySuppress)) ? explode(',', (string) $mailSummaryActivitySuppress) : [];
         $this->activities = array_diff(array_keys($this->getActivitiesArray()), $suppressedActivities);
 
         return true;
@@ -171,7 +175,7 @@ class MailSummaryForm extends Model
     /**
      * Saves the current model values to the current user or globally.
      *
-     * @return boolean success
+     * @return bool success
      */
     public function save()
     {
@@ -201,21 +205,63 @@ class MailSummaryForm extends Model
     }
 
     /**
+     * @return string[]
+     */
+    public static function getUserSettingNames()
+    {
+        return [
+            'mailSummaryInterval',
+            'mailSummaryLimitSpaces',
+            'mailSummaryLimitSpacesMode',
+            'mailSummaryActivitySuppress',
+        ];
+    }
+
+    /**
      * Resets all settings stored for the current user
      *
      * @throws Exception
      */
-    public function resetUserSettings()
+    public function resetUserSettings(): void
     {
         if ($this->user === null) {
             throw new Exception('Could not reset settings when no user is set!');
         }
 
-        $settingsManager = Yii::$app->getModule('activity')->settings->user($this->user);
-        $settingsManager->delete('mailSummaryInterval');
-        $settingsManager->delete('mailSummaryLimitSpaces');
-        $settingsManager->delete('mailSummaryLimitSpacesMode');
-        $settingsManager->delete('mailSummaryActivitySuppress');
+        $settingsManager = static::getModule()->settings->user($this->user);
+        foreach (static::getUserSettingNames() as $userSettingName) {
+            $settingsManager->delete($userSettingName);
+        }
+    }
+
+    /**
+     * @return Module
+     */
+    private static function getModule()
+    {
+        return Yii::$app->getModule('activity');
+    }
+
+    /**
+     * @return bool
+     */
+    public function canResetAllUsers()
+    {
+        return !isset($this->user) && Yii::$app->user->can(ManageUsers::class);
+    }
+
+    /**
+     * Resets all settings stored for all current user
+     */
+    public function resetAllUserSettings()
+    {
+        ContentContainerSetting::deleteAll(['AND',
+            ['module_id' => static::getModule()->id],
+            ['IN', 'name', static::getUserSettingNames()],
+        ]);
+
+        $settingsManager = static::getModule()->settings->user();
+        $settingsManager->reload();
     }
 
 }

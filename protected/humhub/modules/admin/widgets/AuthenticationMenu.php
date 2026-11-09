@@ -8,37 +8,38 @@
 
 namespace humhub\modules\admin\widgets;
 
+use humhub\helpers\ControllerHelper;
+use humhub\modules\admin\permissions\ManageGroups;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\modules\ui\menu\widgets\SubTabMenu;
 use Yii;
-use yii\helpers\Url;
 
 /**
  * Authentication Settings Menu
+ *
+ * @TODO Refactor/Rename to UserSettingsMenu
  */
-class AuthenticationMenu extends \humhub\widgets\BaseMenu
+class AuthenticationMenu extends SubTabMenu
 {
-
-    /**
-     * @inheritdoc
-     */
-    public $template = "@humhub/widgets/views/subTabMenu";
-
     /**
      * @inheritdoc
      */
     public function init()
     {
-        $this->addItem([
-            'label' => Yii::t('AdminModule.setting', 'General'),
-            'url' => Url::toRoute(['/admin/authentication']),
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('AdminModule.settings', 'General'),
+            'url' => ['/admin/authentication'],
             'sortOrder' => 100,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'authentication' && Yii::$app->controller->action->id == 'index'),
-        ]);
-        $this->addItem([
-            'label' => Yii::t('AdminModule.setting', "LDAP"),
-            'url' => Url::toRoute(['/admin/authentication/authentication-ldap']),
-            'sortOrder' => 200,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'admin' && Yii::$app->controller->id == 'authentication' && Yii::$app->controller->action->id == 'authentication-ldap'),
-        ]);
+            'isActive' => ControllerHelper::isActivePath('admin', 'authentication', 'index'),
+        ]));
+
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('AdminModule.user', 'Profile Permissions'),
+            'url' => ['/admin/user-permissions'],
+            'sortOrder' => 600,
+            'isActive' => ControllerHelper::isActivePath('admin', 'user-permissions'),
+            'isVisible' => Yii::$app->user->can(ManageGroups::class),
+        ]));
 
         parent::init();
     }

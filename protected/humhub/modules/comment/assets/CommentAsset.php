@@ -8,19 +8,19 @@
 
 namespace humhub\modules\comment\assets;
 
-use yii\web\AssetBundle;
+use humhub\components\assets\AssetBundle;
 
 class CommentAsset extends AssetBundle
 {
-
+    /**
+     * @inheritdoc
+     */
     public $sourcePath = '@comment/resources';
-    public $css = [];
+
+    /**
+     * @inheritdoc
+     */
     public $js = [
-        'js/humhub.comment.js'
+        'js/humhub.comment.js',
     ];
-
-    public $depends = [
-        'humhub\assets\CoreApiAsset'
-    ];
-
 }

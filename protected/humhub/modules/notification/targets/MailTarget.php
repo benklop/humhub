@@ -8,10 +8,13 @@
 
 namespace humhub\modules\notification\targets;
 
-use Yii;
-use yii\helpers\Html;
+use humhub\components\InstallationState;
+use humhub\helpers\Html;
 use humhub\modules\notification\components\BaseNotification;
 use humhub\modules\user\models\User;
+use Yii;
+use yii\helpers\ArrayHelper;
+use yii\helpers\Url;
 
 /**
  *
@@ -19,7 +22,6 @@ use humhub\modules\user\models\User;
  */
 class MailTarget extends BaseTarget
 {
-
     /**
      * @inheritdoc
      */
@@ -27,7 +29,7 @@ class MailTarget extends BaseTarget
 
     /**
      * Enable this target by default.
-     * @var boolean
+     * @var bool
      */
     public $defaultSetting = true;
 
@@ -36,7 +38,7 @@ class MailTarget extends BaseTarget
      */
     public $view = [
         'html' => '@notification/views/mails/wrapper',
-        'text' => '@notification/views/mails/plaintext/wrapper'
+        'text' => '@notification/views/mails/plaintext/wrapper',
     ];
 
     /**
@@ -55,26 +57,25 @@ class MailTarget extends BaseTarget
         Yii::$app->i18n->setUserLocale($recipient);
 
         Yii::$app->view->params['showUnsubscribe'] = true;
-        Yii::$app->view->params['unsubscribeUrl'] = \yii\helpers\Url::to(['/notification/user'], true);
+        Yii::$app->view->params['unsubscribeUrl'] = Url::to(['/notification/user'], true);
 
         // Note: the renderer is configured in common.php by default its an instance of MailTarget
         $renderer = $this->getRenderer();
 
-        $viewParams = \yii\helpers\ArrayHelper::merge([
-                    'headline' => '',
-                    'notification' => $notification,
-                    'space' => $notification->getSpace(),
-                    'content' => $renderer->render($notification),
-                    'content_plaintext' => $renderer->renderText($notification)
-                        ], $notification->getViewParams());
-
-
-        $from = $notification->originator ? Html::encode($notification->originator->displayName) . ' (' . Html::encode(Yii::$app->name) . ')' : Yii::$app->settings->get('mailer.systemEmailName');
+        $viewParams = ArrayHelper::merge([
+            'headline' => '',
+            'notification' => $notification,
+            'space' => $notification->getSpace(),
+            'content' => $renderer->render($notification),
+            'content_plaintext' => $renderer->renderText($notification),
+        ], $notification->getViewParams());
 
         $mail = Yii::$app->mailer->compose($this->view, $viewParams)
-                ->setFrom([Yii::$app->settings->get('mailer.systemEmailAddress') => $from])
-                ->setTo($recipient->email)
-                ->setSubject($notification->getMailSubject());
+            ->setTo($recipient->email)
+            ->setSubject(str_replace("\n", " ", trim(Html::decode($notification->getMailSubject()))));
+        if ($replyTo = Yii::$app->settings->get('mailerSystemEmailReplyTo')) {
+            $mail->setReplyTo($replyTo);
+        }
 
         if ($notification->beforeMailSend($mail)) {
             $mail->send();
@@ -87,10 +88,9 @@ class MailTarget extends BaseTarget
     /**
      * @inheritdoc
      */
-    public function isActive(User $user = null)
+    public function isActive(?User $user = null)
     {
         // Do not send mail notifications for example content during installlation.
-        return Yii::$app->params['installed'];
+        return parent::isActive() && Yii::$app->installationState->hasState(InstallationState::STATE_INSTALLED);
     }
-
 }

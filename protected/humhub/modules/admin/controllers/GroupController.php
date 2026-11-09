@@ -8,19 +8,24 @@
 
 namespace humhub\modules\admin\controllers;
 
-use Yii;
-use yii\web\HttpException;
-use yii\db\Query;
+use humhub\components\access\ControllerAccess;
+use humhub\components\access\DelegateAccessValidator;
 use humhub\modules\admin\components\Controller;
-use humhub\modules\user\models\Group;
-use humhub\modules\user\models\GroupUser;
-use humhub\modules\user\models\forms\EditGroupForm;
-use humhub\modules\user\models\UserPicker;
-use humhub\modules\user\models\User;
+use humhub\modules\admin\jobs\ReassignGroupDefaultSpaces;
 use humhub\modules\admin\models\forms\AddGroupMemberForm;
-use humhub\modules\admin\permissions\ManageGroups;
 use humhub\modules\admin\models\GroupSearch;
 use humhub\modules\admin\models\UserSearch;
+use humhub\modules\admin\permissions\ManageGroups;
+use humhub\modules\queue\helpers\QueueHelper;
+use humhub\modules\user\models\forms\EditGroupForm;
+use humhub\modules\user\models\Group;
+use humhub\modules\user\models\GroupUser;
+use humhub\modules\user\models\User;
+use humhub\modules\user\models\UserPicker;
+use Yii;
+use yii\db\Query;
+use yii\web\ForbiddenHttpException;
+use yii\web\HttpException;
 
 /**
  * Group Administration Controller
@@ -29,7 +34,6 @@ use humhub\modules\admin\models\UserSearch;
  */
 class GroupController extends Controller
 {
-
     /**
      * @inheritdoc
      */
@@ -40,17 +44,47 @@ class GroupController extends Controller
         $this->subLayout = '@admin/views/layouts/user';
         $this->appendPageTitle(Yii::t('AdminModule.base', 'Groups'));
 
-        return parent::init();
+        parent::init();
     }
 
     /**
      * @inheritdoc
      */
-    public function getAccessRules()
+    protected function getAccessRules()
     {
         return [
-            ['permissions' => ManageGroups::className()]
+            [ControllerAccess::RULE_LOGGED_IN_ONLY],
+            ['checkCanManageGroups'],
+            ['permissions' => ManageGroups::class, 'actions' => ['manage-permissions', 'edit-manager-role']],
         ];
+    }
+
+    /**
+     * Check the current user can manage groups
+     *
+     * @param array $rule
+     * @param DelegateAccessValidator $access
+     * @return bool
+     */
+    public function checkCanManageGroups($rule, $access): bool
+    {
+        if (Yii::$app->user->isAdmin()
+            || Yii::$app->user->can(ManageGroups::class)
+            || Yii::$app->user->isGroupManager()) {
+            return true;
+        }
+
+        $access->code = 403;
+        return false;
+    }
+
+    private function canModifyMembers(): bool
+    {
+        if (Yii::$app->user->isAdmin() || Yii::$app->user->can(ManageGroups::class)) {
+            return true;
+        }
+
+        return Yii::$app->user->isGroupManager() && !$this->module->groupManagerCannotModifyMembers;
     }
 
     /**
@@ -63,7 +97,7 @@ class GroupController extends Controller
 
         return $this->render('index', [
             'dataProvider' => $dataProvider,
-            'searchModel' => $searchModel
+            'searchModel' => $searchModel,
         ]);
     }
 
@@ -72,13 +106,14 @@ class GroupController extends Controller
      */
     public function actionEdit()
     {
-
         // Create Group Edit Form
         $group = EditGroupForm::findOne(['id' => Yii::$app->request->get('id')]);
 
         if (!$group) {
             $group = new EditGroupForm();
         }
+
+        $this->checkGroupAccess($group);
 
         $wasNew = $group->isNewRecord;
 
@@ -87,16 +122,46 @@ class GroupController extends Controller
             if ($wasNew) {
                 return $this->redirect([
                     '/admin/group/manage-group-users',
-                    'id' => $group->id
+                    'id' => $group->id,
                 ]);
+            } else {
+                if (!empty($group->updateSpaceMemberships)) {
+                    $job = new ReassignGroupDefaultSpaces(['groupId' => $group->id]);
+                    if (!QueueHelper::isQueued($job)) {
+                        Yii::$app->queue->push($job);
+                    }
+
+                    $this->view->info(Yii::t(
+                        'AdminModule.user',
+                        'The Space memberships of all group members will be updated. This may take up to several minutes.',
+                    ));
+                }
+            }
+        }
+
+        $canManage = Yii::$app->user->can(ManageGroups::class);
+        $defaultSpaces = $group->getDefaultSpaces();
+
+        // Group managers (users without the global ManageGroups permission who can only manage
+        // this group because they are one of its managers) are allowed to remove default-space
+        // associations only for spaces they themselves administer/own. Lock the pre-selected
+        // spaces they may not remove so the UI doesn't offer a removal control the backend
+        // would silently ignore anyway. EditGroupForm::canManageDefaultSpace() is the shared
+        // predicate enforced on save, so the lock can't drift apart from the actual rule.
+        // SpacePickerField (BasePicker) itself takes care of rendering locked items first.
+        $lockedDefaultSpaceGuids = [];
+        foreach ($defaultSpaces as $defaultSpace) {
+            if (!$group->canManageDefaultSpace($defaultSpace)) {
+                $lockedDefaultSpaceGuids[] = $defaultSpace->guid;
             }
         }
 
         return $this->render('edit', [
             'group' => $group,
-            'showDeleteButton' => (!$group->isNewRecord && !$group->is_admin_group),
             'isCreateForm' => $group->isNewRecord,
-            'isManagerApprovalSetting' => Yii::$app->getModule('user')->settings->get('auth.needApproval')
+            'canManage' => $canManage,
+            'defaultSpaces' => $defaultSpaces,
+            'lockedDefaultSpaceGuids' => $lockedDefaultSpaceGuids,
         ]);
     }
 
@@ -104,24 +169,22 @@ class GroupController extends Controller
     {
         $group = Group::findOne(['id' => Yii::$app->request->get('id')]);
 
-        // Save changed permission states
-        if (!$group->isNewRecord && Yii::$app->request->post('dropDownColumnSubmit')) {
-            Yii::$app->response->format = 'json';
-            $permission = Yii::$app->user->permissionManager->getById(Yii::$app->request->post('permissionId'), Yii::$app->request->post('moduleId'));
-            if ($permission === null) {
-                throw new HttpException(500, 'Could not find permission!');
-            }
-            Yii::$app->user->permissionManager->setGroupState($group->id, $permission, Yii::$app->request->post('state'));
-            return [];
+        $this->checkGroupAccess($group);
+
+        if (!$group->isNewRecord) {
+            // Save changed permission state
+            $return = Yii::$app->user->permissionManager->handlePermissionStateChange($group->id);
         }
 
-        return $this->render('permissions', ['group' => $group]);
+        return $return ?? $this->render('permissions', ['group' => $group]);
     }
 
     public function actionManageGroupUsers()
     {
         $group = Group::findOne(['id' => Yii::$app->request->get('id')]);
-        $searchModel = new UserSearch();
+        $this->checkGroupAccess($group);
+
+        $searchModel = Yii::createObject(UserSearch::class);
         $searchModel->query = $group->getUsers();
         $dataProvider = $searchModel->search(Yii::$app->request->queryParams);
         return $this->render('members', [
@@ -129,24 +192,51 @@ class GroupController extends Controller
             'searchModel' => $searchModel,
             'group' => $group,
             'addGroupMemberForm' => new AddGroupMemberForm(),
-            'isManagerApprovalSetting' => Yii::$app->getModule('user')->settings->get('auth.needApproval')
+            'canManage' => Yii::$app->user->can(ManageGroups::class),
+            'canModifyMembers' => $this->canModifyMembers(),
         ]);
     }
 
     public function actionRemoveGroupUser()
     {
         $this->forcePostRequest();
-        $group = Group::findOne(['id' => Yii::$app->request->get('id')]);
-        $group->removeUser(Yii::$app->request->get('userId'));
 
-        if(Yii::$app->request->isAjax) {
+        if (!$this->canModifyMembers()) {
+            throw new ForbiddenHttpException('Cannot delete members from the group!');
+        }
+
+        $request = Yii::$app->request;
+        $group = Group::findOne(['id' => $request->get('id')]);
+        $this->checkGroupAccess($group);
+
+        $userGroupsCount = GroupUser::find()
+            ->where(['user_id' => $request->get('userId')])
+            ->count();
+
+        $error = '';
+        if ($userGroupsCount > 1) {
+            if (!$group->removeUser($request->get('userId'))) {
+                $error = Yii::t('AdminModule.user', 'The user cannot be removed from this Group!');
+            }
+        } else {
+            $error = Yii::t('AdminModule.user', 'The user cannot be removed from this Group, as users are required to be assigned to at least one Group.');
+        }
+
+        if ($request->isAjax) {
             Yii::$app->response->format = 'json';
-            return ['success' => true];
+            return [
+                'success' => $error === '',
+                'error' => $error,
+            ];
+        }
+
+        if ($error) {
+            $this->view->error($error);
         }
 
         return $this->redirect([
             '/admin/group/manage-group-users',
-            'id' => $group->id
+            'id' => $group->id,
         ]);
     }
 
@@ -160,54 +250,73 @@ class GroupController extends Controller
         $this->forcePostRequest();
         $group = Group::findOne(['id' => Yii::$app->request->get('id')]);
 
-        if ($group == null) {
-            throw new HttpException(404, Yii::t('AdminModule.controllers_GroupController', 'Group not found!'));
+        $this->checkGroupAccess($group);
+
+        // Double check to be sure the group has no restriction to be deleted:
+        if (($deleteRestrictionError = $this->getGroupDeleteRestriction($group)) !== false) {
+            $this->view->error($deleteRestrictionError);
+            return $this->redirect(['/admin/group/edit', 'id' => $group->id]);
         }
 
-        //Double check to get sure we don't remove the admin group
-        if (!$group->is_admin_group) {
-            $group->delete();
-        }
+        $group->delete();
 
         return $this->redirect(['/admin/group']);
     }
 
     public function actionEditManagerRole()
     {
-        Yii::$app->response->format = 'json';
         $this->forcePostRequest();
+
         $group = Group::findOne(Yii::$app->request->post('id'));
+        $this->checkGroupAccess($group);
+
+        if ($group->is_admin_group) {
+            throw new HttpException(400, 'Cannot edit manager role for admin group');
+        }
+
         $value = Yii::$app->request->post('value');
 
-        if ($group == null) {
-            throw new HttpException(404, Yii::t('AdminModule.controllers_GroupController', 'Group not found!'));
-        } else if ($value == null) {
-            throw new HttpException(400, Yii::t('AdminModule.controllers_GroupController', 'No value found!'));
+        if ($value === null) {
+            throw new HttpException(
+                400,
+                Yii::t('AdminModule.user', 'No value found!'),
+            );
         }
 
         $groupUser = $group->getGroupUser(User::findOne(Yii::$app->request->post('userId')));
-
-        if ($groupUser == null) {
-            throw new HttpException(404, Yii::t('AdminModule.controllers_GroupController', 'Group user not found!'));
+        if ($groupUser === null) {
+            throw new HttpException(
+                404,
+                Yii::t('AdminModule.user', 'Group user not found!'),
+            );
         }
 
-        $groupUser->is_group_manager = ($value) ? true : false;
-        $groupUser->save();
+        $groupUser->is_group_manager = (bool)$value;
 
-        return ['success' => true];
+        return $this->asJson(['success' => $groupUser->save()]);
     }
 
     public function actionAddMembers()
     {
         $this->forcePostRequest();
+
+        if (!$this->canModifyMembers()) {
+            throw new ForbiddenHttpException('Cannot add members to the group!');
+        }
+
         $form = new AddGroupMemberForm();
-        if ($form->load(Yii::$app->request->post()) && $form->validate()) {
+        $form->load(Yii::$app->request->post());
+
+        // Ensure the current user is allowed to manage the group the members are added to
+        $this->checkGroupAccess($form->getGroup());
+
+        if ($form->validate()) {
             $form->save();
         }
 
         return $this->redirect([
             '/admin/group/manage-group-users',
-            'id' => $form->groupId
+            'id' => $form->groupId,
         ]);
     }
 
@@ -217,9 +326,13 @@ class GroupController extends Controller
 
         $keyword = Yii::$app->request->get('keyword');
         $group = Group::findOne(Yii::$app->request->get('id'));
+        $this->checkGroupAccess($group);
 
-        $subQuery = (new Query())->select('*')->from(GroupUser::tableName(). ' g')->where([
-                    'and', 'g.user_id=user.id', ['g.group_id' => $group->id]]);
+        $subQuery = (new Query())->select('*')->from(GroupUser::tableName() . ' g')->where([
+            'and',
+            'g.user_id=user.id',
+            ['g.group_id' => $group->id],
+        ]);
 
         $query = User::find()->where(['not exists', $subQuery]);
 
@@ -228,25 +341,62 @@ class GroupController extends Controller
             'query' => $query,
             'fillUser' => true,
             'fillUserQuery' => $group->getUsers(),
-            'disabledText' => Yii::t('AdminModule.controllers_GroupController', 'User is already a member of this group.')
+            'disabledText' => Yii::t(
+                'AdminModule.user',
+                'User is already a member of this group.',
+            ),
         ]);
 
         return $result;
     }
 
-    public function actionAdminUserSearch()
+    public function actionAdminUserSearch($keyword, $id)
     {
-        Yii::$app->response->format = 'json';
+        $group = Group::findOne(['id' => $id]);
+        $this->checkGroupAccess($group);
 
-        $keyword = Yii::$app->request->get('keyword');
-        $group = Group::findOne(Yii::$app->request->get('id'));
-
-        return UserPicker::filter([
+        return $this->asJson(UserPicker::filter([
             'query' => $group->getUsers(),
             'keyword' => $keyword,
             'fillQuery' => User::find(),
-            'disableFillUser' => false
-        ]);
+            'disableFillUser' => false,
+        ]));
     }
 
+    /**
+     * @param Group $group
+     */
+    public function checkGroupAccess($group)
+    {
+        if (!$group) {
+            throw new HttpException(404, Yii::t('AdminModule.user', 'Group not found!'));
+        }
+
+        if (!$group->canManage()) {
+            throw new HttpException(403, 'No permission to manage this group.');
+        }
+    }
+
+    /**
+     * Get a restriction message if the Group cannot be deleted
+     *
+     * @param Group $group
+     * @return string|bool Error message if the Group cannot be deleted, false - if no restrictions to delete the Group
+     */
+    private function getGroupDeleteRestriction($group)
+    {
+        if ($group->is_admin_group) {
+            return Yii::t('AdminModule.user', 'Administrator group could not be deleted!');
+        }
+
+        if ($group->is_default_group) {
+            return Yii::t('AdminModule.user', 'Default group can not be deleted!');
+        }
+
+        if ($group->is_protected) {
+            return Yii::t('AdminModule.user', 'Protected group can not be deleted!');
+        }
+
+        return false;
+    }
 }

@@ -8,7 +8,9 @@
 
 namespace humhub\assets;
 
-use yii\web\AssetBundle;
+use humhub\components\assets\AssetBundle;
+use humhub\components\View;
+use yii\jui\JuiAsset;
 
 /**
  * select2
@@ -17,16 +19,20 @@ use yii\web\AssetBundle;
  */
 class JuiBootstrapBridgeAsset extends AssetBundle
 {
+    /**
+     * @inheritdoc
+     */
+    public $sourcePath = '@humhub/resources';
 
     /**
      * @inheritdoc
      */
-    public $basePath = '@webroot-static';
+    public $defer = false;
 
     /**
      * @inheritdoc
      */
-    public $baseUrl = '@web-static';
+    public $jsPosition = View::POS_HEAD;
 
     /**
      * @inheritdoc
@@ -34,7 +40,7 @@ class JuiBootstrapBridgeAsset extends AssetBundle
     public $js = ['js/jui.bootstrap.bridge.js'];
 
     public $depends = [
-        'yii\jui\JuiAsset'
+        JuiAsset::class,
     ];
 
 }

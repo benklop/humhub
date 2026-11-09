@@ -9,37 +9,42 @@
 namespace humhub\modules\installer\forms;
 
 use Yii;
+use yii\base\Model;
 
 /**
  * Security Settings Form
  *
  * @since 0.5
  */
-class SecurityForm extends \yii\base\Model
+class SecurityForm extends Model
 {
-
     /**
-     * @var boolean allow guest acccess
+     * @var bool allow guest acccess
      */
     public $allowGuestAccess;
 
     /**
-     * @var boolean need approval
+     * @var bool need approval
      */
     public $internalRequireApprovalAfterRegistration;
 
     /**
-     * @var boolean allow anonymous registration
+     * @var bool allow anonymous registration
      */
     public $internalAllowAnonymousRegistration;
 
     /**
-     * @var boolean allow invite from external users by email
+     * @var bool allow invite from external users by email
      */
     public $canInviteExternalUsersByEmail;
 
     /**
-     * @var boolean enable friendship system
+     * @var bool allow invite from external users by link
+     */
+    public $canInviteExternalUsersByLink;
+
+    /**
+     * @var bool enable friendship system
      */
     public $enableFriendshipModule;
 
@@ -48,9 +53,9 @@ class SecurityForm extends \yii\base\Model
      */
     public function rules()
     {
-        return array(
-            array(['allowGuestAccess', 'internalRequireApprovalAfterRegistration', 'internalAllowAnonymousRegistration', 'enableFriendshipModule'], 'boolean'),
-        );
+        return [
+            [['allowGuestAccess', 'internalRequireApprovalAfterRegistration', 'internalAllowAnonymousRegistration', 'enableFriendshipModule'], 'boolean'],
+        ];
     }
 
     /**
@@ -58,13 +63,14 @@ class SecurityForm extends \yii\base\Model
      */
     public function attributeLabels()
     {
-        return array(
-            'allowGuestAccess' => Yii::t('InstallerModule.forms_SecurityForm', 'Allow access for non-registered users to public content (guest access)'),
-            'internalRequireApprovalAfterRegistration' => Yii::t('InstallerModule.forms_SecurityForm', 'Newly registered users have to be activated by an admin first'),
-            'internalAllowAnonymousRegistration' => Yii::t('InstallerModule.forms_SecurityForm', 'External users can register (show registration form on login)'),
-            'canInviteExternalUsersByEmail' => Yii::t('InstallerModule.forms_SecurityForm', 'Registered members can invite new users via email'),
-            'enableFriendshipModule' => Yii::t('InstallerModule.forms_SecurityForm', 'Allow friendships between members'),
-        );
+        return [
+            'allowGuestAccess' => Yii::t('InstallerModule.base', 'Allow access for non-registered users to public content (guest access)'),
+            'internalRequireApprovalAfterRegistration' => Yii::t('InstallerModule.base', 'Newly registered users have to be activated by an admin first'),
+            'internalAllowAnonymousRegistration' => Yii::t('InstallerModule.base', 'External users can register (show registration form on login)'),
+            'canInviteExternalUsersByEmail' => Yii::t('InstallerModule.base', 'Registered members can invite new users via email'),
+            'canInviteExternalUsersByLink' => Yii::t('InstallerModule.base', 'Registered members can invite new users via link'),
+            'enableFriendshipModule' => Yii::t('InstallerModule.base', 'Allow friendships between members'),
+        ];
     }
 
 }

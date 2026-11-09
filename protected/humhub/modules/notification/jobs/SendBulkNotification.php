@@ -5,10 +5,12 @@
  * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
+
 namespace humhub\modules\notification\jobs;
 
+use humhub\modules\queue\LongRunningActiveJob;
+use humhub\modules\user\components\ActiveQueryUser;
 use Yii;
-use humhub\components\queue\ActiveJob;
 
 /**
  * Description of SendNotification
@@ -16,23 +18,23 @@ use humhub\components\queue\ActiveJob;
  * @author buddha
  * @since 1.2
  */
-class SendBulkNotification extends ActiveJob
+class SendBulkNotification extends LongRunningActiveJob
 {
     /**
      * @var array Basenotification data as array.
      */
     public $notification;
-    
+
     /**
-     * @var integer[] Recepient userids.
+     * @var ActiveQueryUser the query to determine which users should receive this notification
      */
-    public $recepients;
-    
+    public $query;
+
     /**
      * @inheritdoc
      */
     public function run()
-    {   
-        Yii::$app->notification->sendBulk($this->notification, $this->recepients); 
+    {
+        Yii::$app->notification->sendBulk($this->notification, $this->query);
     }
 }

@@ -8,9 +8,9 @@
 
 namespace humhub\modules\admin\libs;
 
+use Exception;
+use humhub\modules\marketplace\Module;
 use Yii;
-use yii\helpers\Json;
-use humhub\libs\CURLHelper;
 
 /**
  * HumHubAPI provides access to humhub.com for fetching available modules or latest version.
@@ -19,7 +19,6 @@ use humhub\libs\CURLHelper;
  */
 class HumHubAPI
 {
-
     /**
      * HumHub API
      *
@@ -29,38 +28,17 @@ class HumHubAPI
      */
     public static function request($action, $params = [])
     {
-        if (!Yii::$app->params['humhub']['apiEnabled']) {
+        if (!Yii::$app->params['humhub']['apiEnabled'] || !Yii::$app->hasModule('marketplace')) {
             return [];
         }
 
-        $url = Yii::$app->params['humhub']['apiUrl'] . '/' . $action;
-        $params['version'] = urlencode(Yii::$app->version);
-        $params['installId'] = Yii::$app->getModule('admin')->settings->get('installationId');
-
-        $url .= '?';
-        foreach ($params as $name => $value) {
-            $url .= urlencode($name) . '=' . urlencode($value)."&";
-        }
         try {
-            $http = new \Zend\Http\Client($url, [
-                'adapter' => '\Zend\Http\Client\Adapter\Curl',
-                'curloptions' => CURLHelper::getOptions(),
-                'timeout' => 30
-            ]);
+            /** @var Module $marketplace */
+            $marketplace = Yii::$app->getModule('marketplace');
 
-            $response = $http->send();
-            $json = $response->getBody();
-        } catch (\Zend\Http\Client\Adapter\Exception\RuntimeException $ex) {
-            Yii::error('Could not connect to HumHub API! ' . $ex->getMessage());
-            return [];
+            $response = $marketplace->getHumHubApi()->get($action)->addData($params)->send();
+            return $response->getData();
         } catch (Exception $ex) {
-            Yii::error('Could not get HumHub API response! ' . $ex->getMessage());
-            return [];
-        }
-
-        try {
-            return Json::decode($json);
-        } catch (\yii\base\InvalidParamException $ex) {
             Yii::error('Could not parse HumHub API response! ' . $ex->getMessage());
             return [];
         }
@@ -71,17 +49,20 @@ class HumHubAPI
      *
      * @return string latest HumHub Version
      */
-    public static function getLatestHumHubVersion()
+    public static function getLatestHumHubVersion($useCache = true)
     {
-        $latestVersion = Yii::$app->cache->get('latestVersion');
-        if ($latestVersion === false) {
+        $latestVersion = Yii::$app->cache->get('latestHumHubVersion');
+        if (!$useCache || $latestVersion === false) {
             $info = self::request('v1/modules/getLatestVersion');
 
-            if (isset($info['latestVersion'])) {
+            if (!empty($info['latestVersion'])) {
                 $latestVersion = $info['latestVersion'];
+                Yii::$app->cache->set('latestHumHubVersion', $latestVersion, 2 * 24 * 60 * 60);
+            } elseif ($latestVersion === false) {
+                // Cache a failed request briefly to avoid an API request on every page load
+                $latestVersion = '';
+                Yii::$app->cache->set('latestHumHubVersion', $latestVersion, 60 * 60);
             }
-
-            Yii::$app->cache->set('latestVersion', $latestVersion);
         }
 
         return $latestVersion;

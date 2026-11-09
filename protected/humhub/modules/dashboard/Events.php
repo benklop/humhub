@@ -2,16 +2,17 @@
 
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2015 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2018 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
 
 namespace humhub\modules\dashboard;
 
+use humhub\helpers\ControllerHelper;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\widgets\TopMenu;
 use Yii;
-use yii\helpers\Url;
-
-use humhub\modules\dashboard\widgets\ShareWidget;
+use yii\base\Event;
 
 /**
  * Description of Events
@@ -20,25 +21,24 @@ use humhub\modules\dashboard\widgets\ShareWidget;
  */
 class Events
 {
-
     /**
-     * On build of the TopMenu, check if module is enabled
-     * When enabled add a menu item
+     * TopMenu init event callback
      *
-     * @param type $event
+     * @param Event $event
+     * @see TopMenu
      */
     public static function onTopMenuInit($event)
     {
+        /** @var TopMenu $topMenu */
+        $topMenu = $event->sender;
 
-        // Is Module enabled on this workspace?
-        $event->sender->addItem(array(
-            'label' => Yii::t('DashboardModule.base', 'Dashboard'),
+        $topMenu->addEntry(new MenuLink([
             'id' => 'dashboard',
-            'icon' => '<i class="fa fa-tachometer"></i>',
-            'url' => Url::toRoute('/dashboard/dashboard'),
+            'label' => Yii::t('DashboardModule.base', 'Dashboard'),
+            'url' => ['/dashboard/dashboard'],
+            'icon' => 'dashboard',
             'sortOrder' => 100,
-            'isActive' => (Yii::$app->controller->module && Yii::$app->controller->module->id == 'dashboard'),
-        ));
+            'isActive' => ControllerHelper::isActivePath('dashboard'),
+        ]));
     }
-
 }

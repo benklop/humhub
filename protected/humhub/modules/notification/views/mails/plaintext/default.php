@@ -1,7 +1,20 @@
-<?php $this->beginContent('@notification/views/layouts/mail_plaintext.php', $_params_); ?>
+<?php
+/**
+ * @link https://www.humhub.org/
+ * @copyright Copyright (c) HumHub GmbH & Co. KG
+ * @license https://www.humhub.com/licences
+ */
 
-<?= $text; ?>
+use humhub\components\View;
+
+/* @var View $this */
+/* @var string $text */
+/* @var string $url */
+?>
+<?php $this->beginContent('@notification/views/layouts/mail_plaintext.php') ?>
+
+<?= $text ?>
 
 
-<?= strip_tags(Yii::t('NotificationModule.views_notificationLayoutMail', 'View online:')); ?> <?php echo urldecode($url); ?>
-<?php $this->endContent(); ?>
+<?= Yii::t('NotificationModule.base', 'View online:') ?> <?= urldecode((string) $url) ?>
+<?php $this->endContent() ?>

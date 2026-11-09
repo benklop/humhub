@@ -5,17 +5,16 @@ use yii\db\Migration;
 
 class m140830_145504_following extends Migration
 {
-
     public function up()
     {
 
 
-        $this->createTable('follow', array(
+        $this->createTable('follow', [
             'id' => 'pk',
             'object_model' => 'varchar(100) NOT NULL',
             'object_id' => 'int(11) NOT NULL',
             'user_id' => 'int(11) NOT NULL',
-                ), '');
+        ], '');
 
         $this->createIndex('index_user', 'follow', 'user_id', false);
         $this->createIndex('index_object', 'follow', 'object_model, object_id', false);

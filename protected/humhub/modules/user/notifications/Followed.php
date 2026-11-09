@@ -8,9 +8,10 @@
 
 namespace humhub\modules\user\notifications;
 
-use Yii;
-use yii\bootstrap\Html;
+use humhub\helpers\Html;
 use humhub\modules\notification\components\BaseNotification;
+use Yii;
+use yii\db\IntegrityException;
 
 /**
  * FollowNotification is fired to all users that are being
@@ -18,7 +19,6 @@ use humhub\modules\notification\components\BaseNotification;
  */
 class Followed extends BaseNotification
 {
-
     /**
      * @inheritdoc
      */
@@ -39,10 +39,15 @@ class Followed extends BaseNotification
 
     /**
      * @inheritdoc
+     * @throws IntegrityException
      */
     public function getUrl()
     {
-        return $this->originator->getUrl();
+        if ($this->originator === null) {
+            throw new IntegrityException('Originator cannot be null.');
+        }
+
+        return $this->originator->getUrl(true);
     }
 
     /**
@@ -50,7 +55,7 @@ class Followed extends BaseNotification
      */
     public function getMailSubject()
     {
-        return strip_tags($this->html());
+        return $this->getInfoText($this->originator->displayName);
     }
 
     /**
@@ -58,11 +63,13 @@ class Followed extends BaseNotification
      */
     public function html()
     {
-        return Yii::t('UserModule.notification', '{displayName} is now following you.', [
-                    'displayName' => Html::tag('strong', Html::encode($this->originator->displayName)),
-        ]);
+        return $this->getInfoText(Html::tag('strong', Html::encode($this->originator->displayName)));
     }
 
+    public function getInfoText($displayName)
+    {
+        return Yii::t('UserModule.notification', '{displayName} is now following you.', [
+            'displayName' => $displayName,
+        ]);
+    }
 }
-
-?>

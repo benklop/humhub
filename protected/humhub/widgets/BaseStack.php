@@ -2,12 +2,13 @@
 
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2018 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
 
 namespace humhub\widgets;
 
+use humhub\components\Widget;
 use Yii;
 
 /**
@@ -20,11 +21,15 @@ use Yii;
  * @since 0.5
  * @author Luke
  */
-class BaseStack extends \yii\base\Widget
+class BaseStack extends Widget
 {
+    public const EVENT_INIT = 'init';
+    public const EVENT_RUN = 'run';
 
-    const EVENT_INIT = 'init';
-    const EVENT_RUN = 'run';
+    /**
+     * Default value for the sort order if no sort order value is specified in the widget.
+     */
+    public const DEFAULT_SORT_ORDER = 9000;
 
     /**
      * Holds all added widgets
@@ -32,18 +37,18 @@ class BaseStack extends \yii\base\Widget
      * Array
      *  [0] Classname
      *  [1] Params Arrays
-     *  [2] Additional Options
+     *  [2] Additional Options e.g. sortOrder (0-10000)
      *
      * @var array
      */
-    public $widgets = array();
+    public $widgets = [];
 
     /**
      * Seperator HTML Code (glue)
      *
      * @var string
      */
-    public $seperator = "";
+    public $seperator = '';
 
     /**
      * Template for output
@@ -51,14 +56,13 @@ class BaseStack extends \yii\base\Widget
      *
      * @var string
      */
-    public $template = "{content}";
+    public $template = '{content}';
 
     /**
      * Initializes the sidebar widget.
      */
     public function init()
     {
-
         // Yii 2.0.11 introduced own init event
         if (version_compare(Yii::getVersion(), '2.0.11', '<')) {
             $this->trigger(self::EVENT_INIT);
@@ -74,21 +78,20 @@ class BaseStack extends \yii\base\Widget
     {
         $this->trigger(self::EVENT_RUN);
 
-        $content = "";
+        $content = '';
 
-        $i = 0;
+        $hasContent = false;
         foreach ($this->getWidgets() as $widget) {
-            $i++;
-
             $widgetClass = $widget[0];
 
             $out = $widgetClass::widget($widget[1]);
 
             if (!empty($out)) {
-                $content .= $out;
-                if ($i != count($this->getWidgets())) {
+                if ($hasContent) {
                     $content .= $this->seperator;
                 }
+                $hasContent = true;
+                $content .= trim((string) $out);
             }
         }
 
@@ -117,13 +120,13 @@ class BaseStack extends \yii\base\Widget
     protected function getWidgets()
     {
 
-        usort($this->widgets, function($a, $b) {
-            $sortA = (isset($a[2]['sortOrder'])) ? $a[2]['sortOrder'] : 100;
-            $sortB = (isset($b[2]['sortOrder'])) ? $b[2]['sortOrder'] : 100;
+        usort($this->widgets, function ($a, $b) {
+            $sortA = $a[2]['sortOrder'] ?? static::DEFAULT_SORT_ORDER;
+            $sortB = $b[2]['sortOrder'] ?? static::DEFAULT_SORT_ORDER;
 
             if ($sortA == $sortB) {
                 return 0;
-            } else if ($sortA < $sortB) {
+            } elseif ($sortA < $sortB) {
                 return -1;
             } else {
                 return 1;
@@ -143,13 +146,13 @@ class BaseStack extends \yii\base\Widget
     public function addWidget($className, $params = [], $options = [])
     {
         if (!isset($options['sortOrder'])) {
-            $options['sortOrder'] = 100;
+            $options['sortOrder'] = static::DEFAULT_SORT_ORDER;
         }
 
         $this->widgets[] = [
             $className,
             $params,
-            $options
+            $options,
         ];
     }
 

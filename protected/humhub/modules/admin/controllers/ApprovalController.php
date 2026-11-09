@@ -8,19 +8,22 @@
 
 namespace humhub\modules\admin\controllers;
 
-use Yii;
-use yii\helpers\Html;
-use yii\helpers\Url;
-use yii\web\ForbiddenHttpException;
-use yii\web\HttpException;
-use humhub\modules\user\models\User;
+use humhub\components\access\ControllerAccess;
+use humhub\components\access\DelegateAccessValidator;
 use humhub\modules\admin\components\Controller;
 use humhub\modules\admin\models\forms\ApproveUserForm;
-use humhub\modules\admin\permissions\ManageUsers;
-use humhub\modules\admin\permissions\ManageGroups;
+use humhub\modules\admin\models\UserApprovalSearch;
+use humhub\modules\admin\Module;
+use humhub\modules\user\models\ProfileField;
+use Throwable;
+use Yii;
+use yii\base\InvalidConfigException;
+use yii\db\StaleObjectException;
+use yii\web\HttpException;
+use yii\web\Response;
 
 /**
- * ApprovalController handels new user approvals
+ * ApprovalController handles new user approvals
  */
 class ApprovalController extends Controller
 {
@@ -29,108 +32,201 @@ class ApprovalController extends Controller
      */
     public $adminOnly = false;
 
+    public const ACTION_SEND_MESSAGE = 'send_message';
+    public const ACTION_APPROVE = 'approve';
+    public const ACTION_DECLINE = 'decline';
+
+    public const USER_SETTINGS_SCREEN_KEY = 'admin_approval_screen_profile_fields_id';
+
+    /**
+     * @inheritdoc
+     */
     public function init()
     {
         $this->subLayout = '@admin/views/layouts/user';
         $this->appendPageTitle(Yii::t('AdminModule.base', 'Approval'));
-
-        return parent::init();
+        parent::init();
     }
 
     /**
      * @inheritdoc
      */
-    public function getAccessRules()
+    protected function getAccessRules()
     {
         return [
-            ['permissions' => [
-                ManageUsers::className(),
-                ManageGroups::className()
-            ]]
+            [ControllerAccess::RULE_LOGGED_IN_ONLY],
+            ['checkCanManageUsers'],
         ];
     }
 
     /**
-     * @inheritdoc
+     * Check the current user can manage other users
+     *
+     * @param array $rule
+     * @param DelegateAccessValidator $access
+     * @return bool
      */
-    public function beforeAction($action)
+    public function checkCanManageUsers($rule, $access): bool
     {
-        if (!Yii::$app->user->getIdentity()->canApproveUsers()) {
-            throw new ForbiddenHttpException(Yii::t('error', 'You are not allowed to perform this action.'));
+        if (Yii::$app->user->getIdentity()->canManageUsers()) {
+            return true;
         }
 
-        if (!Yii::$app->user->isAdmin()) {
-            $this->subLayout = "@humhub/modules/admin/views/approval/_layoutNoAdmin";
-        }
-
-        return parent::beforeAction($action);
+        $access->code = 403;
+        return false;
     }
 
+    /**
+     * @return string
+     * @throws Throwable
+     * @throws InvalidConfigException
+     */
     public function actionIndex()
     {
-        $searchModel = new \humhub\modules\admin\models\UserApprovalSearch();
+        $searchModel = new UserApprovalSearch();
         $dataProvider = $searchModel->search(Yii::$app->request->queryParams);
+
+        // Get available profile fields for screen options
+        $availableProfileFields = ProfileField::find()
+            ->joinWith('category')
+            ->orderBy([
+                'profile_field_category.sort_order' => SORT_ASC,
+                'profile_field.sort_order' => SORT_ASC,
+            ])
+            ->where(['profile_field.show_at_registration' => true])
+            ->andWhere(['not', ['profile_field.internal_name' => ['firstname', 'lastname']]])
+            ->all();
+
+        // Get or set screen options
+        /** @var Module $module */
+        $module = Yii::$app->getModule('admin');
+        $screenProfileFieldsId = $module->settings->user()->getSerialized(self::USER_SETTINGS_SCREEN_KEY, []);
+        if (Yii::$app->request->isPost) {
+            $screenProfileFieldsId = Yii::$app->request->post('screenProfileFieldsId', []);
+            $module->settings->user()->setSerialized(self::USER_SETTINGS_SCREEN_KEY, $screenProfileFieldsId);
+        }
+        $profileFieldsColumns = !$screenProfileFieldsId ? [] : ProfileField::find()
+            ->where(['id' => $screenProfileFieldsId])
+            ->indexBy('id')
+            ->all();
 
         return $this->render('index', [
             'dataProvider' => $dataProvider,
-            'searchModel' => $searchModel
+            'searchModel' => $searchModel,
+            'availableProfileFields' => $availableProfileFields,
+            'profileFieldsColumns' => $profileFieldsColumns,
         ]);
     }
 
-    public function actionApprove()
+    /**
+     * @param $id
+     * @return string|\yii\console\Response|Response
+     * @throws Throwable
+     * @throws InvalidConfigException
+     */
+    public function actionSendMessage($id)
     {
-        $user = User::findOne(['id' => (int) Yii::$app->request->get('id')]);
+        $model = new ApproveUserForm($id);
+        $model->setSendMessageDefaults();
+        if ($model->load(Yii::$app->request->post())) {
+            if ($model->sendMessage()) {
+                $this->view->success(Yii::t('AdminModule.user', 'The message has been sent by email.'));
+                return $this->redirect(['index']);
+            }
+            $this->view->error(Yii::t('AdminModule.user', 'Could not send the message to the user!'));
+        }
 
-        if ($user == null)
-            throw new HttpException(404, Yii::t('AdminModule.controllers_ApprovalController', 'User not found!'));
-
-        $model = new ApproveUserForm;
-        $model->subject = Yii::t('AdminModule.controllers_ApprovalController', "Account Request for '{displayName}' has been approved.", ['{displayName}' => Html::encode($user->displayName)]);
-        $model->message = strtr(Yii::$app->getModule('user')->settings->get('auth.registrationApprovalMailContent', Yii::t('AdminModule.controllers_ApprovalController', \humhub\modules\admin\models\forms\AuthenticationSettingsForm::defaultRegistrationApprovalMailContent)), [
-                    '{displayName}' => Html::encode($user->displayName),
-                    '{loginURL}' => urldecode(Url::to(["/user/auth/login"], true)),
-                    '{AdminName}' => Yii::$app->user->getIdentity()->displayName,
+        return $this->render('send-message', [
+            'model' => $model->user,
+            'approveFormModel' => $model,
         ]);
+    }
 
-        if ($model->load(Yii::$app->request->post()) && $model->validate()) {
-            $model->send($user->email);
-            $user->status = User::STATUS_ENABLED;
-            $user->save();
-            $user->setUpApproved();
-            return $this->redirect(['index']);
+    /**
+     * @param $id
+     * @return string|\yii\console\Response|\yii\web\Response
+     * @throws \Throwable
+     * @throws \yii\base\InvalidConfigException
+     */
+    public function actionApprove($id)
+    {
+        $model = new ApproveUserForm($id);
+        $model->setApprovalDefaults();
+        if ($model->load(Yii::$app->request->post())) {
+            if ($model->approve()) {
+                $this->view->success(Yii::t('AdminModule.user', 'The registration was approved and the user was notified by email.'));
+                return $this->redirect(['index']);
+            }
+            $this->view->error(Yii::t('AdminModule.user', 'Could not approve the user!'));
         }
 
         return $this->render('approve', [
-            'model' => $user,
-            'approveFormModel' => $model
+            'model' => $model->user,
+            'approveFormModel' => $model,
         ]);
     }
 
-    public function actionDecline()
+    /**
+     * @param $id
+     * @return string|\yii\console\Response|Response
+     * @throws Throwable
+     * @throws InvalidConfigException
+     * @throws StaleObjectException
+     */
+    public function actionDecline($id)
     {
-
-        $user = User::findOne(['id' => (int) Yii::$app->request->get('id')]);
-
-        if ($user == null)
-            throw new HttpException(404, Yii::t('AdminModule.controllers_ApprovalController', 'User not found!'));
-
-        $model = new ApproveUserForm;
-        $model->subject = Yii::t('AdminModule.controllers_ApprovalController', 'Account Request for \'{displayName}\' has been declined.', ['{displayName}' => Html::encode($user->displayName)]);
-        $model->message = strtr(Yii::$app->getModule('user')->settings->get('auth.registrationDenialMailContent', Yii::t('AdminModule.controllers_ApprovalController', \humhub\modules\admin\models\forms\AuthenticationSettingsForm::defaultRegistrationDenialMailContent)), [
-                    '{displayName}' => Html::encode($user->displayName),
-                    '{AdminName}' => Yii::$app->user->getIdentity()->displayName,
-        ]);
-
-        if ($model->load(Yii::$app->request->post()) && $model->validate()) {
-            $model->send($user->email);
-            $user->delete();
-            return $this->redirect(['index']);
+        $model = new ApproveUserForm($id);
+        $model->setDeclineDefaults();
+        if ($model->load(Yii::$app->request->post())) {
+            if ($model->decline()) {
+                $this->view->success(Yii::t('AdminModule.user', 'The registration was declined and the user was notified by email.'));
+                return $this->redirect(['index']);
+            }
+            $this->view->error(Yii::t('AdminModule.user', 'Could not decline the user!'));
         }
 
         return $this->render('decline', [
-            'model' => $user,
-            'approveFormModel' => $model
+            'model' => $model->user,
+            'approveFormModel' => $model,
         ]);
+    }
+
+    /**
+     * @return string|\yii\console\Response|Response
+     * @throws HttpException
+     * @throws Throwable
+     * @throws InvalidConfigException
+     */
+    public function actionBulkActions()
+    {
+        /** @var string $action */
+        $action = Yii::$app->request->post('action');
+        /** @var array $usersId */
+        $usersId = Yii::$app->request->post('ids');
+
+        if (!$usersId) {
+            $this->view->error(Yii::t('AdminModule.user', 'No users were selected.'));
+            return $this->redirect(['index']);
+        }
+
+        $model = new ApproveUserForm($usersId);
+
+        if ($action === self::ACTION_SEND_MESSAGE && $model->bulkSendMessage()) {
+            $this->view->success(Yii::t('AdminModule.user', 'The users were notified by email.'));
+            return $this->redirect(['index']);
+        }
+
+        if ($action === self::ACTION_APPROVE && $model->bulkApprove()) {
+            $this->view->success(Yii::t('AdminModule.user', 'The registrations were approved and the users were notified by email.'));
+            return $this->redirect(['index']);
+        }
+
+        if ($action === self::ACTION_DECLINE && $model->bulkDecline()) {
+            $this->view->success(Yii::t('AdminModule.user', 'The registrations were declined and the users were notified by email.'));
+            return $this->redirect(['index']);
+        }
+
+        throw new HttpException(400, 'Invalid action!');
     }
 
 }

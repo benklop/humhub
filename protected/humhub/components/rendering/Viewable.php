@@ -16,7 +16,6 @@ namespace humhub\components\rendering;
  */
 interface Viewable
 {
-
     /**
      * Returns an array of view parameter, required for rendering.
      *
@@ -44,5 +43,4 @@ interface Viewable
      * @return string text content representation of this viewable.
      */
     public function text();
-
 }

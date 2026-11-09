@@ -1,17 +1,36 @@
 <?php
 
-use humhub\libs\Html;
+use humhub\compat\HForm;
+use humhub\modules\user\services\LinkRegistrationService;
+use humhub\widgets\bootstrap\Button;
+use humhub\widgets\form\ActiveForm;
+use humhub\widgets\modal\ModalButton;
 
-humhub\assets\TabbedFormAsset::register($this);
+/**
+ * @var $hForm HForm
+ * @var $canInviteByEmail bool
+ * @var $canInviteByLink bool
+ */
 ?>
 
 <div class="panel-body">
     <div class="clearfix">
-        <?= Html::backButton(['index'], ['label' => Yii::t('AdminModule.base', 'Back to overview'), 'class' => 'pull-right']); ?>
-        <h4 class="pull-left"><?= Yii::t('AdminModule.views_user_index', 'Add new user'); ?></h4>
+        <div class="float-end">
+            <?= Button::back(['index'], Yii::t('AdminModule.base', 'Back to overview'))
+                ->right(false) ?>
+
+            <?php if ($canInviteByEmail || $canInviteByLink): ?>
+                <?= ModalButton::success(Yii::t('AdminModule.user', 'Invite new people'))
+                    ->load(['/user/invite', 'target' => LinkRegistrationService::TARGET_ADMIN])
+                    ->icon('invite')
+                    ->sm() ?>
+            <?php endif; ?>
+        </div>
+
+        <h4 class="float-start"><?= Yii::t('AdminModule.user', 'Add new user') ?></h4>
     </div>
     <br>
-    <?php $form = \yii\widgets\ActiveForm::begin(['options' => ['data-ui-widget' => 'ui.form.TabbedForm', 'data-ui-init' => '']]); ?>
+    <?php $form = ActiveForm::begin(['options' => ['data-ui-widget' => 'ui.form.TabbedForm', 'data-ui-init' => ''], 'acknowledge' => true]); ?>
     <?= $hForm->render($form); ?>
-    <?php \yii\widgets\ActiveForm::end(); ?>
+    <?php ActiveForm::end(); ?>
 </div>

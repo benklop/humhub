@@ -17,14 +17,18 @@
  * NOTE: this file must be saved in UTF-8 encoding.
  */
 return [
-    '{displayNames} commented {contentTitle}' => '',
-    '{displayNames} commented {contentTitle} in space {space}' => '',
-    '{displayNames} commented {contentTitle}.' => '',
-    '{displayNames} just commented your {contentTitle}' => '',
-    '{displayNames} just commented your {contentTitle} in space {space}' => '',
-    '{displayName} commented {contentTitle}' => '',
-    '{displayName} commented {contentTitle} in space {space}' => '',
-    '{displayName} commented {contentTitle}.' => '',
-    '{displayName} just commented your {contentTitle}' => '',
-    '{displayName} just commented your {contentTitle} in space {space}' => '',
+    'Comments' => 'Comentarios',
+    'Receive Notifications when someone comments on my own or a following post.' => 'Recibir notificacions quan belún comenta en una publicación de yo u atra que sigo.',
+    'View Online' => 'Veyer en linia',
+    '{displayNames} commented {contentTitle}' => '{displayNames} ha comentau {contentTitle}',
+    '{displayNames} commented {contentTitle} in Space {space}' => '{displayNames} ha comentau {contentTitle} en l\'espacio {space}',
+    '{displayNames} commented {contentTitle}.' => '{displayNames} ha comentau {contentTitle}.',
+    '{displayNames} just commented your {contentTitle}' => '{displayNames} acaba de comentar a tuya {contentTitle}',
+    '{displayNames} just commented your {contentTitle} in Space {space}' => '{displayNames} acaba de comentar a tuya {contentTitle} en l\'espacio {space}',
+    '{displayName} commented {contentTitle}' => '{displayName} ha comentau {contentTitle}',
+    '{displayName} commented {contentTitle} in Space {space}' => '{displayName} ha comentau {contentTitle} en l\'espacio {space}',
+    '{displayName} commented {contentTitle}.' => '{displayName} ha comentau {contentTitle}.',
+    '{displayName} just commented your {contentTitle}' => '{displayName} acaba de comentar a tuya {contentTitle}',
+    '{displayName} just commented your {contentTitle} in Space {space}' => '{displayName} acaba de comentar a tuya {contentTitle} en l\'espacio {space}',
+    '[Deleted]' => '',
 ];

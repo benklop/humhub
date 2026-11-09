@@ -15,13 +15,12 @@ use yii\di\NotInstantiableException;
 
 /**
  * Mobile Target
- * 
+ *
  * @since 1.2
  * @author buddha
  */
 class MobileTarget extends BaseTarget
 {
-
     /**
      * @inheritdoc
      */
@@ -38,7 +37,7 @@ class MobileTarget extends BaseTarget
 
         try {
             $this->provider = Yii::$container->get(MobileTargetProvider::class);
-        } catch (NotInstantiableException $e) {
+        } catch (NotInstantiableException) {
             // No provider given
         }
     }
@@ -47,12 +46,12 @@ class MobileTarget extends BaseTarget
      * Used to forward a BaseNotification object to a BaseTarget.
      * The notification target should handle the notification by pushing a Job to
      * a Queue or directly handling the notification.
-     * 
+     *
      * @param BaseNotification $notification
      */
     public function handle(BaseNotification $notification, User $user)
     {
-        if($this->provider) {
+        if ($this->provider) {
             $this->provider->handle($notification, $user);
         }
     }
@@ -65,13 +64,12 @@ class MobileTarget extends BaseTarget
         return Yii::t('NotificationModule.targets', 'Mobile');
     }
 
-    public function isActive(User $user = null)
+    public function isActive(?User $user = null)
     {
-        if(!$this->provider) {
+        if (!parent::isActive() || !$this->provider) {
             return false;
         }
 
         return $this->provider->isActive($user);
     }
-
 }

@@ -8,25 +8,25 @@
 
 namespace humhub\modules\space\modules\manage\widgets;
 
-use Yii;
-use humhub\modules\space\modules\manage\models\MembershipSearch;
+use humhub\helpers\ControllerHelper;
+use humhub\helpers\Html;
 use humhub\modules\space\models\Membership;
+use humhub\modules\space\models\Space;
+use humhub\modules\space\modules\manage\models\MembershipSearch;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\modules\ui\menu\widgets\TabMenu;
+use humhub\widgets\bootstrap\Badge;
+use Yii;
 
 /**
  * MemberMenu is a tabbed menu for space member administration
  *
  * @author Basti
  */
-class MemberMenu extends \humhub\widgets\BaseMenu
+class MemberMenu extends TabMenu
 {
-
     /**
-     * @inheritdoc
-     */
-    public $template = "@humhub/widgets/views/tabMenu";
-
-    /**
-     * @var \humhub\modules\space\models\Space
+     * @var Space
      */
     public $space;
 
@@ -36,37 +36,39 @@ class MemberMenu extends \humhub\widgets\BaseMenu
     public function init()
     {
 
-        $this->addItem(array(
-            'label' => Yii::t('SpaceModule.widgets_SpaceMembersMenu', 'Members'),
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('SpaceModule.manage', 'Members'),
             'url' => $this->space->createUrl('/space/manage/member/index'),
             'sortOrder' => 100,
-            'isActive' => (Yii::$app->controller->action->id == 'index' && Yii::$app->controller->id === 'member'),
-        ));
+            'isActive' => ControllerHelper::isActivePath(null, 'member', 'index'),
+        ]));
 
         if ($this->countPendingInvites() != 0) {
-            $this->addItem(array(
-                'label' => Yii::t('SpaceModule.widgets_SpaceMembersMenu', 'Pending Invites') . '&nbsp;&nbsp;<span class="label label-danger">'.$this->countPendingInvites().'</span>',
+            $this->addEntry(new MenuLink([
+                'label' => Html::encode(Yii::t('SpaceModule.manage', 'Pending Invites')) . '&nbsp;&nbsp;' . Badge::danger($this->countPendingInvites()),
+                'encodeLabel' => false,
                 'url' => $this->space->createUrl('/space/manage/member/pending-invitations'),
                 'sortOrder' => 200,
-                'isActive' => (Yii::$app->controller->action->id == 'pending-invitations'),
-            ));
+                'isActive' => ControllerHelper::isActivePath(null, 'member', 'pending-invitations'),
+            ]));
         }
         if ($this->countPendingApprovals() != 0) {
-            $this->addItem(array(
-                'label' => Yii::t('SpaceModule.widgets_SpaceMembersMenu', 'Pending Approvals'). '&nbsp;&nbsp;<span class="label label-danger">'.$this->countPendingApprovals().'</span>',
+            $this->addEntry(new MenuLink([
+                'label' => Html::encode(Yii::t('SpaceModule.manage', 'Pending Approvals')) . '&nbsp;&nbsp;' . Badge::danger($this->countPendingApprovals()),
+                'encodeLabel' => false,
                 'url' => $this->space->createUrl('/space/manage/member/pending-approvals'),
                 'sortOrder' => 300,
-                'isActive' => (Yii::$app->controller->action->id == 'pending-approvals'),
-            ));
+                'isActive' => ControllerHelper::isActivePath(null, 'member', 'pending-approvals'),
+            ]));
         }
 
-        if ($this->space->isSpaceOwner()) {
-            $this->addItem(array(
-                'label' => Yii::t('SpaceModule.widgets_SpaceMembersMenu', 'Owner'),
+        if ($this->space->isSpaceOwner() || (!Yii::$app->user->isGuest && Yii::$app->user->identity->isSystemAdmin())) {
+            $this->addEntry(new MenuLink([
+                'label' => Yii::t('SpaceModule.manage', 'Owner'),
                 'url' => $this->space->createUrl('/space/manage/member/change-owner'),
                 'sortOrder' => 500,
-                'isActive' => (Yii::$app->controller->action->id == 'change-owner'),
-            ));
+                'isActive' => ControllerHelper::isActivePath(null, 'member', 'change-owner'),
+            ]));
         }
 
 
@@ -75,7 +77,7 @@ class MemberMenu extends \humhub\widgets\BaseMenu
 
     /**
      * Returns the number of currently invited users
-     * 
+     *
      * @return int currently invited members
      */
     protected function countPendingInvites()
@@ -83,12 +85,13 @@ class MemberMenu extends \humhub\widgets\BaseMenu
         $searchModel = new MembershipSearch();
         $searchModel->space_id = $this->space->id;
         $searchModel->status = Membership::STATUS_INVITED;
-        return $searchModel->search([])->getCount();
+
+        return $searchModel->search([])->getTotalCount();
     }
 
     /**
      * Returns the number of currently pending approvals
-     * 
+     *
      * @return int currently pending approvals
      */
     protected function countPendingApprovals()
@@ -96,7 +99,8 @@ class MemberMenu extends \humhub\widgets\BaseMenu
         $searchModel = new MembershipSearch();
         $searchModel->space_id = $this->space->id;
         $searchModel->status = Membership::STATUS_APPLICANT;
-        return $searchModel->search([])->getCount();
+
+        return $searchModel->search([])->getTotalCount();
     }
 
 }

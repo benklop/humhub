@@ -2,21 +2,27 @@
 
 namespace humhub\modules\user\models\forms;
 
+use humhub\helpers\DeviceDetectorHelper;
+use humhub\modules\user\assets\UserAsset;
+use humhub\modules\user\authclient\BaseFormClient;
 use Yii;
 use yii\base\Model;
-use humhub\modules\user\authclient\BaseFormAuth;
-
-use humhub\modules\user\libs\Ldap;
-
 
 /**
- * LoginForm is the model behind the login form.
+ * Single-shot login form — username + password validated together.
+ *
+ * Used by:
+ *  - {@see LoginPassword} (Step 2 of the interactive web flow, via inheritance)
+ *  - third-party integrations that authenticate a user from username + password
+ *    in one call (e.g. CalDAV `HttpBasicAuth` backend, REST `auth/AuthController`)
+ *
+ * The interactive web flow does not instantiate this class directly — it uses
+ * {@see LoginIdentity} (Step 1) and {@see LoginPassword} (Step 2).
  */
 class Login extends Model
 {
-
     /**
-     * @var string user's username or email address
+     * @var string user's email or username address
      */
     public $username;
 
@@ -26,12 +32,17 @@ class Login extends Model
     public $password;
 
     /**
-     * @var boolean remember user
+     * @var bool remember user
      */
     public $rememberMe = false;
 
     /**
-     * @var \yii\authclient\BaseClient auth client used to authenticate
+     * @var bool hide "Remember me" form field in the view
+     */
+    public $hideRememberMe = false;
+
+    /**
+     * @var BaseFormClient auth client used to authenticate
      */
     public $authClient = null;
 
@@ -52,52 +63,74 @@ class Login extends Model
     public function init()
     {
         $this->rememberMe = Yii::$app->getModule('user')->loginRememberMeDefault;
-        
+        $this->hideRememberMe = DeviceDetectorHelper::isAppRequest();
+
         parent::init();
     }
-    
+
     /**
      * @inheritdoc
      */
     public function attributeLabels()
     {
-        return array(
-            'username' => Yii::t('UserModule.views_auth_login', 'username or email'),
-            'password' => Yii::t('UserModule.views_auth_login', 'password'),
-            'rememberMe' => Yii::t('UserModule.views_auth_login', 'Remember me'),
-        );
+        return [
+            'username' => Yii::t('UserModule.auth', 'Email or Username'),
+            'password' => Yii::t('UserModule.auth', 'Password'),
+            'rememberMe' => Yii::t('UserModule.auth', 'Keep me Signed In'),
+        ];
     }
 
     /**
-     * Validation
+     * Iterates over the configured form-based auth clients and tries each one.
+     * Sets {@see $authClient} on the first successful auth. Adds a generic
+     * "User or Password incorrect" error otherwise — never reveals which side
+     * (username vs password) failed.
      */
     public function afterValidate()
     {
-        $user = null;
-
-        // Loop over enabled authclients
+        $authClientDelayed = null;
         foreach (Yii::$app->authClientCollection->getClients() as $authClient) {
-            if ($authClient instanceof BaseFormAuth) {
+            if ($authClient instanceof BaseFormClient) {
                 $authClient->login = $this;
-                if ($authClient->auth()) {
+
+                if ($authClient->isDelayedLoginAction()) {
+                    // Don't even try to do authorization if user is delayed currently
+                    $authClientDelayed = $authClient;
+                    break;
+                }
+
+                if ($authClient->authenticate($this->username, $this->password)) {
                     $this->authClient = $authClient;
 
                     // Delete password after successful auth
-                    $this->password = "";
+                    $this->password = '';
 
                     return;
+                }
+
+                // User may be delayed during authorization attempt above,
+                // so we need this additional check in order to delay the login form immediately
+                if ($authClient->isDelayedLoginAction()) {
+                    $authClientDelayed = $authClient;
                 }
             }
         }
 
-        if ($user === null) {
-            $this->addError('password', 'User or Password incorrect.');
+        if ($authClientDelayed) {
+            UserAsset::register(Yii::$app->view);
+            Yii::$app->view->registerJs(
+                'humhub.require("user.login").delayLoginAction('
+                . $authClientDelayed->getDelayedLoginTime() . ',
+                "' . Yii::t('UserModule.auth', 'Please wait') . '",
+                "#login-button")',
+            );
         }
 
+        $this->addError('password', Yii::t('UserModule.auth', 'User or Password incorrect.'));
+
         // Delete current password value
-        $this->password = "";
+        $this->password = '';
 
         parent::afterValidate();
     }
-
 }

@@ -1,39 +1,49 @@
 <?php
 
-namespace tests\codeception\_support;
-
-use Yii;
-use yii\base\Event;
-use yii\db\ActiveRecord;
-use humhub\libs\BasePermission;
-use humhub\modules\content\components\ContentContainerPermissionManager;
-use humhub\modules\content\tests\codeception\fixtures\ContentContainerFixture;
-use humhub\modules\file\tests\codeception\fixtures\FileFixture;
-use humhub\modules\friendship\tests\codeception\fixtures\FriendshipFixture;
-use humhub\modules\user\components\PermissionManager;
-use humhub\modules\user\tests\codeception\fixtures\UserFullFixture;
-use Codeception\TestCase\Test;
-use humhub\modules\user\models\User;
-use humhub\modules\notification\models\Notification;
-use humhub\modules\activity\models\Activity;
+/*
+ * @link      https://www.humhub.org/
+ * @copyright Copyright (c) 2023 HumHub GmbH & Co. KG
+ * @license   https://www.humhub.com/licences
+ */
 
 /**
- * Inherited Methods
- * @method void wantToTest($text)
- * @method void wantTo($text)
- * @method void execute($callable)
- * @method void expectTo($prediction)
- * @method void expect($prediction)
- * @method void amGoingTo($argumentation)
- * @method void am($role)
- * @method void lookForwardTo($achieveValue)
- * @method void comment($description)
- * @method \Codeception\Lib\Friend haveFriend($name, $actorClass = NULL)
- *
+ * @noinspection PhpIllegalPsrClassPathInspection
+ */
+
+namespace tests\codeception\_support;
+
+use Codeception\Configuration;
+use Codeception\Test\Unit;
+use humhub\libs\BasePermission;
+use humhub\modules\activity\tests\codeception\fixtures\ActivityFixture;
+use humhub\modules\content\components\ContentContainerPermissionManager;
+use humhub\modules\content\tests\codeception\fixtures\ContentContainerFixture;
+use humhub\modules\content\tests\codeception\fixtures\ContentFixture;
+use humhub\modules\file\tests\codeception\fixtures\FileFixture;
+use humhub\modules\file\tests\codeception\fixtures\FileHistoryFixture;
+use humhub\modules\friendship\models\Friendship;
+use humhub\modules\friendship\tests\codeception\fixtures\FriendshipFixture;
+use humhub\modules\live\tests\codeception\fixtures\LiveFixture;
+use humhub\modules\notification\tests\codeception\fixtures\NotificationFixture;
+use humhub\modules\space\tests\codeception\fixtures\SpaceFixture;
+use humhub\modules\space\tests\codeception\fixtures\SpaceMembershipFixture;
+use humhub\modules\user\components\PermissionManager;
+use humhub\modules\user\models\Group;
+use humhub\modules\user\models\User;
+use humhub\modules\user\tests\codeception\fixtures\GroupPermissionFixture;
+use humhub\modules\user\tests\codeception\fixtures\UserFullFixture;
+use humhub\tests\codeception\fixtures\SettingFixture;
+use humhub\tests\codeception\fixtures\UrlOembedFixture;
+use PHPUnit\Framework\SkippedTestError;
+use Yii;
+use yii\base\InvalidConfigException;
+
+/**
  * @SuppressWarnings(PHPMD)
  */
-class HumHubDbTestCase extends Test
+class HumHubDbTestCase extends Unit
 {
+    use HumHubHelperTrait;
 
     protected $fixtureConfig;
 
@@ -41,64 +51,58 @@ class HumHubDbTestCase extends Test
 
     public $time;
 
-    protected function setUp()
+    public array $firedEvents = [];
+
+    protected function setUp(): void
     {
-        parent::setUp();
-        $webRoot = dirname(dirname(__DIR__)).'/../../..';
+        if (\Yii::$app !== null) {
+            \Yii::$app->db->trigger('afterOpen');
+        }
+
+        if (Yii::$app === null) {
+            $c = new \ReflectionClass($this);
+            $m = $c->getMethod($this->getName(false));
+            $doc = $m->getDocComment();
+            if (preg_match('#@skip(.*?)\r?\n#s', $doc, $annotations)) {
+                throw new SkippedTestError("Test was skipped due to @skip annotation: " . (trim($annotations[1]) ?: "[No reason indicated!]"), 0);
+            }
+            return;
+        }
+
+        $webRoot = dirname(__DIR__, 2) . '/../../..';
         Yii::setAlias('@webroot', realpath($webRoot));
-        $this->initModules();
-        $this->reloadSettings();
-        $this->deleteMails();
-    }
+        static::initModules(__METHOD__);
+        static::reloadSettings(__METHOD__);
+        static::flushCache(__METHOD__);
+        static::deleteMails(__METHOD__);
 
-    protected function tearDown()
-    {
-        Event::offAll();
-        parent::tearDown();
-    }
+        Yii::$app->installationState->setInstalled();
 
-    protected function reloadSettings()
-    {
-        Yii::$app->settings->reload();
-        
-        foreach (Yii::$app->modules as $module) {
-            if ($module instanceof \humhub\components\Module) {
-                $module->settings->reload();
-            }
-        }
-    }
-
-    protected function deleteMails()
-    {
-        $path = Yii::getAlias('@runtime/mail');
-        $files = glob($path . '/*'); // get all file names
-        foreach ($files as $file) { // iterate files
-            if (is_file($file)) {
-                unlink($file); // delete file
-            }
-        }
+        parent::setUp();
     }
 
     /**
      * Initializes modules defined in @tests/codeception/config/test.config.php
      * Note the config key in test.config.php is modules and not humhubModules!
      */
-    protected function initModules()
+    protected static function initModules(?string $caller = null)
     {
-        $cfg = \Codeception\Configuration::config();
+        codecept_debug(sprintf('[%s] Initializing Modules', $caller ?? __METHOD__));
+        $cfg = Configuration::config();
+
         if (!empty($cfg['humhub_modules'])) {
-            Yii::$app->moduleManager->enableModules($cfg['humhub_modules']);
+            foreach ($cfg['humhub_modules'] as $moduleId) {
+                Yii::$app->moduleManager->getModule($moduleId)->enable();
+            }
         }
     }
 
-    /**
-     * @inheritdoc
-     */
-    public function _fixtures()
+    /* @codingStandardsIgnoreLine PSR2.Methods.MethodDeclaration.Underscore */
+    public function _fixtures(): array
     {
-        $cfg = \Codeception\Configuration::config();
+        $cfg = Configuration::config();
 
-        if(!$this->fixtureConfig && isset($cfg['fixtures'])) {
+        if (!$this->fixtureConfig && isset($cfg['fixtures'])) {
             $this->fixtureConfig = $cfg['fixtures'];
         }
 
@@ -107,7 +111,7 @@ class HumHubDbTestCase extends Test
         if (!empty($this->fixtureConfig)) {
             foreach ($this->fixtureConfig as $fixtureTable => $fixtureClass) {
                 if ($fixtureClass === 'default') {
-                    $result = array_merge($result, $this->getDefaultFixtures());
+                    $result = array_merge($result, static::getDefaultFixtures());
                 } else {
                     $result[$fixtureTable] = ['class' => $fixtureClass];
                 }
@@ -117,84 +121,107 @@ class HumHubDbTestCase extends Test
         return $result;
     }
 
-    protected function getDefaultFixtures()
+    protected static function getDefaultFixtures(): array
     {
         return [
             'user' => ['class' => UserFullFixture::class],
-            'group_permission' => ['class' => \humhub\modules\user\tests\codeception\fixtures\GroupPermissionFixture::className()],
+            'url_oembed' => ['class' => UrlOembedFixture::class],
+            'group_permission' => ['class' => GroupPermissionFixture::class],
             'contentcontainer' => ['class' => ContentContainerFixture::class],
-            'settings' => ['class' => \humhub\tests\codeception\fixtures\SettingFixture::className()],
-            'space' => ['class' => \humhub\modules\space\tests\codeception\fixtures\SpaceFixture::className()],
-            'space_membership' => ['class' => \humhub\modules\space\tests\codeception\fixtures\SpaceMembershipFixture::className()],
-            'space_module' => ['class' => \humhub\modules\space\tests\codeception\fixtures\SpaceModuleFixture::className()],
-            'content' => ['class' => \humhub\modules\content\tests\codeception\fixtures\ContentFixture::className()],
-            'notification' => ['class' => \humhub\modules\notification\tests\codeception\fixtures\NotificationFixture::className()],
+            'settings' => ['class' => SettingFixture::class],
+            'space' => ['class' => SpaceFixture::class],
+            'space_membership' => ['class' => SpaceMembershipFixture::class],
+            'content' => ['class' => ContentFixture::class],
+            'notification' => ['class' => NotificationFixture::class],
             'file' => ['class' => FileFixture::class],
-            'activity' => ['class' => \humhub\modules\activity\tests\codeception\fixtures\ActivityFixture::className()],
-            'friendship' => ['class' => FriendshipFixture::class]
+            'file_history' => ['class' => FileHistoryFixture::class],
+            'activity' => ['class' => ActivityFixture::class],
+            'friendship' => ['class' => FriendshipFixture::class],
+            'live' => [ 'class' => LiveFixture::class],
         ];
     }
 
-    public function assertHasNotification($class, ActiveRecord $source, $originator_id = null, $msg = null)
+    /**
+     * @param bool $allow
+     */
+    public static function allowGuestAccess(bool $allow = true)
     {
-        $notificationQuery = Notification::find(['class' => $class, 'source_class' => $source->className(), 'source_pk' => $source->getPrimaryKey()]);
+        Yii::$app
+            ->getModule('user')
+            ->settings
+            ->set('auth.allowGuestAccess', (int)$allow);
+    }
 
-        if ($originator_id != null) {
-            $notificationQuery->andWhere(['originator_user_id' => $originator_id]);
+    public static function setProfileField($field, $value, $user)
+    {
+        if (is_int($user)) {
+            $user = User::findOne($user);
+        } elseif (is_string($user)) {
+            $user = User::findOne(['username' => $user]);
+        } elseif (!$user) {
+            $user = Yii::$app->user->identity;
         }
 
-        $this->assertNotEmpty($notificationQuery->all(), $msg);
+        $user->profile->setAttributes([$field => $value]);
+        $user->profile->save();
     }
 
-    public function assertHasActivity($class, ActiveRecord $source, $msg = null)
+    public static function becomeFriendWith($username)
     {
-        $activity = Activity::findOne(['class' => $class, 'object_model' => $source->className(), 'object_id' => $source->getPrimaryKey()]);
-        $this->assertNotNull($activity, $msg);
+        $user = User::findOne(['username' => $username]);
+        Friendship::add($user, Yii::$app->user->identity);
+        Friendship::add(Yii::$app->user->identity, $user);
     }
 
-    public function assertMailSent($count = 0, $msg = null)
+    public static function follow($username)
     {
-        return $this->getModule('Yii2')->seeEmailIsSent($count);
+        User::findOne(['username' => $username])->follow();
     }
 
-    public function assertEqualsLastEmailSubject($subject)
+    public static function enableFriendships($enable = true)
     {
-        $message = $this->getModule('Yii2')->grabLastSentEmail();
-        $this->assertEquals($subject, $message->getSubject());
+        Yii::$app->getModule('friendship')->settings->set('enable', $enable);
     }
 
-    public function allowGuestAccess($allow = true)
-    {
-        if($allow) {
-            Yii::$app->getModule('user')->settings->set('auth.allowGuestAccess', 1);
-        } else {
-            Yii::$app->getModule('user')->settings->set('auth.allowGuestAccess', 0);
-        }
-    }
-
-    public function setGroupPermission($groupId, $permission, $state = BasePermission::STATE_ALLOW)
+    public static function setGroupPermission($groupId, $permission, $state = BasePermission::STATE_ALLOW)
     {
         $permissionManger = new PermissionManager();
         $permissionManger->setGroupState($groupId, $permission, $state);
         Yii::$app->user->permissionManager->clear();
     }
 
-    public function setContentContainerPermission($contentContainer, $groupId, $permission, $state = BasePermission::STATE_ALLOW)
-    {
+    public static function setContentContainerPermission(
+        $contentContainer,
+        $groupId,
+        $permission,
+        $state = BasePermission::STATE_ALLOW,
+    ) {
         $permissionManger = new ContentContainerPermissionManager(['contentContainer' => $contentContainer]);
         $permissionManger->setGroupState($groupId, $permission, $state);
         $contentContainer->permissionManager->clear();
     }
 
-    public function becomeUser($userName)
+    public static function becomeUser($userName): ?User
     {
         $user = User::findOne(['username' => $userName]);
         Yii::$app->user->switchIdentity($user);
+        return $user;
     }
 
-    public function logout()
+    public static function logout()
     {
-        Yii::$app->user->logout(true);
+        Yii::$app->user->logout();
     }
 
+    /**
+     * @throws InvalidConfigException
+     */
+    public static function addUserToGroup(string $userName, int $groupId): bool
+    {
+        $group = Group::findOne($groupId);
+        if ($group === null) {
+            return false;
+        }
+        return $group->addUser(User::findOne(['username' => $userName]));
+    }
 }

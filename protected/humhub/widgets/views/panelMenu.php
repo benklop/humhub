@@ -1,34 +1,40 @@
 <?php
-$this->registerJsFile("@web-static/js/panelMenu.js", ['position' => yii\web\View::POS_BEGIN]);
+
+use humhub\components\View;
+use humhub\helpers\Html;
+
+/**
+ * @var $this View
+ * @var $enableCollapseOption bool
+ * @var $collapseId string
+ */
+
 ?>
-<ul class="nav nav-pills preferences">
-    <li class="dropdown ">
-        <a class="dropdown-toggle" data-toggle="dropdown" href="#" aria-label="<?= Yii::t('base', 'Toggle panel menu'); ?>" aria-haspopup="true"><i class="fa fa-angle-down"></i></a>
-        <ul class="dropdown-menu pull-right">
-            <li>
-                <a href="javascript:togglePanelUp('<?= $id; ?>');" class="panel-collapse">
-                    <i class="fa fa-minus-square"></i> <?= Yii::t('base', 'Collapse'); ?>
-                </a>
-            </li>
-            <li>
-                <a href="javascript:togglePanelDown('<?= $id; ?>');" class="panel-expand" style="display:none;">
-                    <i class="fa fa-plus-square"></i> <?= Yii::t('base', 'Expand'); ?>
-                </a>
-            </li>
-            <?php
-            echo $this->context->extraMenus;
-            ?>
+
+<ul data-ui-widget="ui.panel.PanelMenu" data-ui-init class="nav nav-pills preferences">
+    <li class="nav-item dropdown">
+        <?= Html::a('', '#', [
+            'class' => 'nav-link dropdown-toggle',
+            'data-bs-toggle' => 'dropdown',
+            'aria-label' => Yii::t('base', 'Toggle panel menu'),
+            'aria-haspopup' => 'true',
+            'aria-expanded' => 'false',
+            'role' => 'button',
+        ]) ?>
+
+        <ul class="dropdown-menu dropdown-menu-end">
+            <?php if ($enableCollapseOption): ?>
+                <li>
+                    <?= Html::a(Html::tag('span', Yii::t('base', 'Toggle panel'), ['class' => 'visually-hidden']), '#' . $collapseId, [
+                        'class' => ['dropdown-item', 'panel-collapse'],
+                        'data-bs-toggle' => 'collapse',
+                        'aria-controls' => $collapseId,
+                        'aria-expanded' => 'false',
+                        'aria-label' => Yii::t('base', 'Toggle panel'),
+                    ]) ?>
+                </li>
+            <?php endif; ?>
+            <?= $this->context->extraMenus ?>
         </ul>
     </li>
 </ul>
-
-<script type = "text/javascript">
-
-    $(document).ready(function () {
-
-        // check and set panel state from cookie
-        checkPanelMenuCookie('<?php echo $this->context->id; ?>');
-    });
-
-
-</script>

@@ -1,51 +1,55 @@
 <?php
 
-use yii\bootstrap\ActiveForm;
-use yii\helpers\Html;
-use yii\helpers\Url;
+use humhub\modules\admin\models\forms\SpaceSettingsForm;
+use humhub\modules\admin\permissions\ManageSpaces;
+use humhub\modules\space\models\AdvancedSettings;
 use humhub\modules\space\models\Space;
 use humhub\modules\space\modules\manage\widgets\DefaultMenu;
+use humhub\widgets\bootstrap\Button;
+use humhub\widgets\form\ActiveForm;
+use humhub\widgets\form\SortOrderField;
+use yii\helpers\Url;
+
+/* @var $model AdvancedSettings */
+/* @var $indexModuleSelection array */
+/* @var $space Space */
 ?>
 
-
 <div class="panel panel-default">
-
     <div>
         <div class="panel-heading">
-            <?php echo Yii::t('SpaceModule.views_settings', '<strong>Space</strong> settings'); ?>
+            <?= Yii::t('SpaceModule.manage', '<strong>Space</strong> settings'); ?>
         </div>
     </div>
 
-    <?= DefaultMenu::widget(['space' => $model]); ?>
+    <?= DefaultMenu::widget(['space' => $space]); ?>
+
     <div class="panel-body">
 
-        <?php $form = ActiveForm::begin(['options' => ['id' => 'spaceIndexForm'], 'enableClientValidation' => false]); ?>
-
-        <?php if (Yii::$app->urlManager->enablePrettyUrl): ?>
-            <?php echo $form->field($model, 'url')->hint(Yii::t('SpaceModule.manage', 'e.g. example for {baseUrl}/s/example', ['baseUrl' => Url::base(true)])); ?>
+        <?php $form = ActiveForm::begin(['options' => ['id' => 'spaceIndexForm'], 'enableClientValidation' => false, 'acknowledge' => true]); ?>
+        <?php if (Yii::$app->urlManager->enablePrettyUrl) : ?>
+            <?= $form->field($model, 'url')->hint(Yii::t('SpaceModule.manage', 'e.g. example for {baseUrl}/s/example', ['baseUrl' => Url::base(true)])); ?>
         <?php endif; ?>
-        <?php echo $form->field($model, 'indexUrl')->dropDownList($indexModuleSelection)->hint(Yii::t('SpaceModule.manage', 'the default start page of this space for members')) ?>
-        <?php echo $form->field($model, 'indexGuestUrl')->dropDownList($indexModuleSelection)->hint(Yii::t('SpaceModule.manage', 'the default start page of this space for visitors')) ?>
+        <?= $form->field($model, 'hideMembers')->checkbox(); ?>
+        <?= $form->field($model, 'hideAbout')->checkbox(); ?>
+        <?= $form->field($model, 'hideActivities')->checkbox(); ?>
+        <?= $form->field($model, 'hideFollowers')->checkbox(); ?>
+        <?= $form->field($model, 'showTopicSidebar')->checkbox() ?>
+        <?= $form->field($model, 'topicSidebarSortOrder')->widget(SortOrderField::class) ?>
+        <?= $form->field($model, 'indexUrl')->dropDownList($indexModuleSelection) ?>
+        <?= $form->field($model, 'indexGuestUrl')->dropDownList($indexModuleSelection) ?>
+        <?= $form->field($model, 'defaultStreamSort')->dropDownList(SpaceSettingsForm::defaultStreamSortOptions()) ?>
+        <?php if (Yii::$app->user->can(ManageSpaces::class)) : ?>
+            <?= $form->field($model, 'sortOrder')->widget(SortOrderField::class) ?>
+        <?php else: ?>
+            <?= $form->field($model, 'sortOrder')->widget(SortOrderField::class, [
+                'options' => ['disabled' => 'disabled']
+            ])->hint(Yii::t('SpaceModule.manage', 'Only global administrators can change this value')) ?>
+        <?php endif; ?>
 
-        <?php echo Html::submitButton(Yii::t('SpaceModule.views_admin_edit', 'Save'), array('class' => 'btn btn-primary', 'data-ui-loader' => '')); ?>
-
-        <?php echo \humhub\widgets\DataSaved::widget(); ?>
-
-        <div class="pull-right">
-            <?php if ($model->status == Space::STATUS_ENABLED || $model->status == Space::STATUS_ARCHIVED) : ?> 
-                <a href="#"  <?= $model->status == Space::STATUS_ARCHIVED ? 'style="display:none;"' : '' ?> class="btn btn-warning archive"
-                   data-action-click="space.archive"  data-action-url="<?= $model->createUrl('/space/manage/default/archive') ?>" data-ui-loader>
-                    <?= Yii::t('SpaceModule.views_admin_edit', 'Archive') ?>
-                </a>
-                <a href="#" <?= $model->status == Space::STATUS_ENABLED ? 'style="display:none;"' : '' ?> class="btn btn-warning unarchive"
-                   data-action-click="space.unarchive" data-action-url="<?= $model->createUrl('/space/manage/default/unarchive') ?>"  data-ui-loader>
-                    <?= Yii::t('SpaceModule.views_admin_edit', 'Unarchive') ?>
-                </a>
-            <?php endif; ?>
-        </div>
+        <?= Button::save()->submit() ?>
+        <?= Button::danger(Yii::t('base', 'Delete'))->right()->link($space->createUrl('delete'))->visible($space->canDelete()) ?>
 
         <?php ActiveForm::end(); ?>
     </div>
 </div>
-
-

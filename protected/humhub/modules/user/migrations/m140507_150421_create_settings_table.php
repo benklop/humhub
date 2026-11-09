@@ -5,12 +5,11 @@ use yii\db\Migration;
 
 class m140507_150421_create_settings_table extends Migration
 {
-
     public function up()
     {
 
         // Create New User Settings Table
-        $this->createTable('user_setting', array(
+        $this->createTable('user_setting', [
             'id' => 'pk',
             'user_id' => 'int(10)',
             'module_id' => 'varchar(100) DEFAULT NULL',
@@ -20,7 +19,7 @@ class m140507_150421_create_settings_table extends Migration
             'created_by' => 'int(11) DEFAULT NULL',
             'updated_at' => 'datetime DEFAULT NULL',
             'updated_by' => 'int(11) DEFAULT NULL',
-                ), '');
+        ], '');
 
         $this->createIndex('idx_user_setting', 'user_setting', 'user_id, module_id, name', true);
     }

@@ -8,13 +8,10 @@
 
 namespace humhub\modules\friendship\controllers;
 
-
-use yii\data\ActiveDataProvider;
-
-use humhub\modules\user\components\BaseAccountController;
 use humhub\modules\friendship\models\Friendship;
 use humhub\modules\friendship\models\SettingsForm;
-
+use humhub\modules\user\components\BaseAccountController;
+use yii\data\ActiveDataProvider;
 
 /**
  * Membership Manage Controller
@@ -23,7 +20,6 @@ use humhub\modules\friendship\models\SettingsForm;
  */
 class ManageController extends BaseAccountController
 {
-
     public function actionIndex()
     {
         return $this->redirect(['list']);
@@ -39,8 +35,8 @@ class ManageController extends BaseAccountController
         ]);
 
         return $this->render('list', [
-                    'user' => $this->getUser(),
-                    'dataProvider' => $dataProvider
+            'user' => $this->getUser(),
+            'dataProvider' => $dataProvider,
         ]);
     }
 
@@ -54,8 +50,8 @@ class ManageController extends BaseAccountController
         ]);
 
         return $this->render('requests', [
-                    'user' => $this->getUser(),
-                    'dataProvider' => $dataProvider
+            'user' => $this->getUser(),
+            'dataProvider' => $dataProvider,
         ]);
     }
 
@@ -69,8 +65,8 @@ class ManageController extends BaseAccountController
         ]);
 
         return $this->render('sent-requests', [
-                    'user' => $this->getUser(),
-                    'dataProvider' => $dataProvider
+            'user' => $this->getUser(),
+            'dataProvider' => $dataProvider,
         ]);
     }
 

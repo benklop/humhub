@@ -30,7 +30,6 @@ use Yii;
  */
 class LayoutRenderer extends ViewPathRenderer
 {
-
     /**
      * @var string layout file path
      */
@@ -40,8 +39,8 @@ class LayoutRenderer extends ViewPathRenderer
      * If a $layout is given the result will embed the rendered viewFile into the
      * given $layout.
      *
-     * @param \humhub\components\rendering\Viewable $viewable
-     * @param type $params
+     * @param Viewable $viewable
+     * @param array $params
      * @return string
      */
     public function render(Viewable $viewable, $params = [])
@@ -49,7 +48,7 @@ class LayoutRenderer extends ViewPathRenderer
         $viewParams = $viewable->getViewParams($params);
 
         // Render the viewFile
-        if(!isset($viewParams['content'])) {
+        if (!isset($viewParams['content'])) {
             $viewParams['content'] = parent::renderView($viewable, $viewParams);
         }
 
@@ -67,12 +66,11 @@ class LayoutRenderer extends ViewPathRenderer
      * Returns the layout file path.
      * Subclasses may use the $viewable to determine the layout path.
      *
-     * @param \humhub\components\rendering\Viewable $viewable
+     * @param Viewable $viewable
      * @return string
      */
     protected function getLayout(Viewable $viewable)
     {
         return $this->layout;
     }
-
 }

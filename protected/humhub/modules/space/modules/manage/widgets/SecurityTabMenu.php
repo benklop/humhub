@@ -8,6 +8,10 @@
 
 namespace humhub\modules\space\modules\manage\widgets;
 
+use humhub\helpers\ControllerHelper;
+use humhub\modules\space\models\Space;
+use humhub\modules\ui\menu\MenuLink;
+use humhub\modules\ui\menu\widgets\TabMenu;
 use Yii;
 
 /**
@@ -15,30 +19,32 @@ use Yii;
  *
  * @author Luke
  */
-class SecurityTabMenu extends \humhub\widgets\BaseMenu
+class SecurityTabMenu extends TabMenu
 {
-
-    public $template = "@humhub/widgets/views/tabMenu";
-
     /**
-     * @var \humhub\modules\space\models\Space
+     * @var Space
      */
     public $space;
 
+    /**
+     * @inheritdoc
+     */
     public function init()
     {
-        $this->addItem(array(
-            'label' => Yii::t('AdminModule.manage', 'General'),
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('AdminModule.base', 'General'),
             'url' => $this->space->createUrl('/space/manage/security'),
             'sortOrder' => 100,
-            'isActive' => (Yii::$app->controller->id == 'security' && Yii::$app->controller->action->id == 'index'),
-        ));
-        $this->addItem(array(
-            'label' => Yii::t('AdminModule.manage', 'Permissions'),
+            'isActive' => ControllerHelper::isActivePath(null, 'security', 'index'),
+        ]));
+
+        $this->addEntry(new MenuLink([
+            'label' => Yii::t('AdminModule.base', 'Permissions'),
             'url' => $this->space->createUrl('/space/manage/security/permissions'),
             'sortOrder' => 200,
-            'isActive' => (Yii::$app->controller->id == 'security' && Yii::$app->controller->action->id == 'permissions'),
-        ));
+            'isActive' => ControllerHelper::isActivePath(null, 'security', 'permissions'),
+        ]));
+
         parent::init();
     }
 

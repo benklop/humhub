@@ -8,29 +8,52 @@
 
 namespace humhub\components\i18n;
 
+use DateTimeZone;
+use Exception;
+use humhub\components\InstallationState;
+use humhub\libs\I18NHelper;
+use humhub\libs\TimezoneHelper;
 use Yii;
+use yii\base\InvalidArgumentException;
 use humhub\models\forms\ChooseLanguage;
-use yii\base\InvalidParamException;
+use yii\i18n\I18N as BaseI18N;
 
 /**
  * I18N provides features related with internationalization (I18N) and localization (L10N).
  *
  * @inheritdoc
  */
-class I18N extends \yii\i18n\I18N
+class I18N extends BaseI18N
 {
-
     /**
      * @var string path which contains message overwrites
      */
     public $messageOverwritePath = '@config/messages';
 
     /**
+     * Languages which are not supported by Yii.
+     * To overwrite this languages, a language file called "humhub.yii.php"
+     * needs to be placed in the messages folder.
+     *
+     * @var array list of languages
+     */
+    public $unsupportedYiiLanguages = ['an'];
+
+    /**
+     * Called before the translate method is executed.
+     * e.g. to modify translations on the fly.
+     *
+     * @since 1.4
+     * @var callable
+     */
+    public $beforeTranslateCallback;
+
+    /**
      * Automatically sets the current locale and time zone
      */
     public function autosetLocale()
     {
-        if (!Yii::$app->params['installed'] || Yii::$app->user->isGuest) {
+        if (!Yii::$app->installationState->hasState(InstallationState::STATE_INSTALLED) || Yii::$app->user->isGuest) {
             $this->setGuestLocale();
         } else {
             $this->setUserLocale(Yii::$app->user->getIdentity());
@@ -46,7 +69,7 @@ class I18N extends \yii\i18n\I18N
     public function setUserLocale($user)
     {
         if ($user === null) {
-            throw new InvalidParamException('User cannot be null!');
+            throw new InvalidArgumentException('User cannot be null!');
         }
 
         if (!empty($user->language)) {
@@ -55,15 +78,19 @@ class I18N extends \yii\i18n\I18N
             $this->setDefaultLocale();
         }
 
-        if (!empty($user->time_zone)) {
-            Yii::$app->formatter->timeZone = $user->time_zone;
-        } else {
-            Yii::$app->formatter->timeZone = Yii::$app->timeZone;
+        $timeZone = $user->time_zone;
+        try {
+            new DateTimeZone($timeZone);
+        } catch (Exception) {
+            // e.g. `Europe/Kiev` on systems without legacy tz data: replace, store and log it once
+            $defaultTimeZone = Yii::$app->settings->get('defaultTimeZone');
+            $fallback = TimezoneHelper::isValid($defaultTimeZone) ? $defaultTimeZone : Yii::$app->timeZone;
+            $timeZone = TimezoneHelper::replaceUnknown($timeZone, $fallback);
+            $user->updateAttributes(['time_zone' => $timeZone]);
         }
 
+        Yii::$app->formatter->timeZone = $timeZone;
         Yii::$app->formatter->defaultTimeZone = Yii::$app->timeZone;
-
-        $this->fixLocaleCodes();
     }
 
     /**
@@ -90,8 +117,6 @@ class I18N extends \yii\i18n\I18N
                 $this->setLocale($language);
             }
         }
-
-        $this->fixLocaleCodes();
     }
 
     /**
@@ -99,8 +124,7 @@ class I18N extends \yii\i18n\I18N
      */
     public function setDefaultLocale()
     {
-        $this->setLocale( Yii::$app->settings->get('defaultLanguage'));
-        $this->fixLocaleCodes();
+        $this->setLocale(Yii::$app->settings->get('defaultLanguage'));
     }
 
     /**
@@ -110,7 +134,7 @@ class I18N extends \yii\i18n\I18N
      */
     protected function setLocale($locale)
     {
-        if(!empty($locale)) {
+        if (!empty($locale)) {
             Yii::$app->language = $locale;
             Yii::$app->formatter->locale = $locale;
         }
@@ -121,19 +145,13 @@ class I18N extends \yii\i18n\I18N
      */
     public function translate($category, $message, $params, $language)
     {
-        // Fix Yii source language is en-US
-        if (($language == 'en' || $language == 'en_gb') && $category == 'yii') {
-            $language = 'en-US';
-        }
-        if ($language == 'zh_cn' && $category == 'yii') {
-            $language = 'zh-CN';
-        }
-        if ($language == 'zh_tw' && $category == 'yii') {
-            $language = 'zh-TW';
+        if ($category === 'yii' && in_array($language, $this->unsupportedYiiLanguages)) {
+            $category = 'humhub.yii';
         }
 
-        if ($language == 'nb_no' && $category == 'yii') {
-            $language = 'nb-NO';
+        if (is_callable($this->beforeTranslateCallback)) {
+            [$category, $message, $params, $language]
+                = $this->beforeTranslateCallback->call($this, $category, $message, $params, $language);
         }
 
         return parent::translate($category, $message, $params, $language);
@@ -151,16 +169,11 @@ class I18N extends \yii\i18n\I18N
 
         // Try to automatically assign Module->MessageSource
         foreach (Yii::$app->moduleManager->getModules(['includeCoreModules' => true, 'returnClass' => true]) as $moduleId => $className) {
-            $moduleCategory = $this->getTranslationCategory($moduleId);
-
-            if (substr($category, 0, strlen($moduleCategory)) === $moduleCategory) {
-                $reflector = new \ReflectionClass($className);
-
+            $moduleCategory = I18NHelper::getModuleTranslationCategory($moduleId);
+            if (str_starts_with($category, $moduleCategory)) {
                 $this->translations[$moduleCategory . '*'] = [
-                    'class' => 'humhub\components\i18n\MessageSource',
-                    'sourceLanguage' => Yii::$app->sourceLanguage,
-                    'sourceCategory' => $moduleCategory,
-                    'basePath' => dirname($reflector->getFileName()) . '/messages',
+                    'class' => 'humhub\components\i18n\ModuleMessageSource',
+                    'moduleId' => $moduleId,
                 ];
             }
         }
@@ -189,30 +202,49 @@ class I18N extends \yii\i18n\I18N
     }
 
     /**
+     * Check if the provided or browser language is allowed in system, otherwise return default language
+     *
+     * @since 1.12.2
+     * @param string|null $language NULL - to get a language from browser
+     * @return string|null
+     */
+    public function getAllowedLanguage(?string $language = null): ?string
+    {
+        if (empty($language)) {
+            $language = Yii::$app->language;
+        }
+
+        if (array_key_exists($language, $this->getAllowedLanguages())) {
+            return $language;
+        }
+
+        return Yii::$app->settings->get('defaultLanguage');
+    }
+
+    /**
      * @inheritdoc
      */
     public function format($message, $params, $language)
     {
         if (count($params) !== 0) {
             $fixedParams = [];
-
             // Try to fix old placeholder formats
             foreach ($params as $param => $value) {
-                if (substr($param, 0, 1) === "%" && substr($param, -1, 1) === "%" && strlen($param) > 2) {
+                if (str_starts_with((string) $param, "%") && str_ends_with((string) $param, "%") && strlen((string) $param) > 2) {
                     // Fix: %param% style params
                     $fixedParam = str_replace("%", "", $param);
                     $fixedParams[$fixedParam] = $value;
                     $message = str_replace('%' . $fixedParam . '%', '{' . $fixedParam . '}', $message);
-                } elseif (substr($param, 0, 1) == "%") {
+                } elseif (str_starts_with((string) $param, "%")) {
                     // Fix: %param style params
                     $fixedParam = str_replace("%", "", $param);
                     $fixedParams[$fixedParam] = $value;
                     $message = str_replace('%' . $fixedParam, '{' . $fixedParam . '}', $message);
-                } elseif (substr($param, 0, 1) === "{" && substr($param, -1, 1) === "}") {
+                } elseif (str_starts_with((string) $param, "{") && str_ends_with((string) $param, "}")) {
                     // Fix: {param} style params
                     $fixedParam = str_replace(['{', '}'], "", $param);
                     $fixedParams[$fixedParam] = $value;
-                } elseif (substr($param, 0, 1) === ":") {
+                } elseif (str_starts_with((string) $param, ":")) {
                     // Fix: :param style params
                     $fixedParam = str_replace(':', "", $param);
                     $fixedParams[$fixedParam] = $value;
@@ -223,34 +255,6 @@ class I18N extends \yii\i18n\I18N
             }
             return parent::format($message, $fixedParams, $language);
         }
-
         return parent::format($message, $params, $language);
     }
-
-    /**
-     * Returns the default translation category for a given moduleId.
-     *
-     * Examples:
-     *      example -> ExampleModule.
-     *      long_module_name -> LongModuleNameModule.
-     *
-     * @param string $moduleId
-     * @return string Category Id
-     */
-    protected function getTranslationCategory($moduleId)
-    {
-        return implode('', array_map("ucfirst", preg_split("/(_|\-)/", $moduleId))) . 'Module.';
-    }
-
-    /**
-     * Ensure that old language codes are translated to the
-     * current format.
-     */
-    protected function fixLocaleCodes()
-    {
-        if (Yii::$app->language == 'en') {
-            $this->setLocale('en-US');
-        }
-    }
-
 }

@@ -1,4 +1,5 @@
 <?php
+
 namespace user\acceptance;
 
 use user\AcceptanceTester;
@@ -9,61 +10,62 @@ class AccountCest
     public function testBaseAccountSettings(AcceptanceTester $I)
     {
         $I->wantTo('ensure that the basic account settings work');
-        
+
         $I->amGoingTo('save access my account settings');
         $I->amUser();
         $I->amOnProfile();
-        
+
         $I->click('Edit account');
-        $I->waitForText('Account settings');
-        $I->click('Settings');
-        
-        $I->waitForText('User settings');
-        
+        $I->waitForText('Your Account');
+        $I->click('General');
+
+        $I->waitForText('Basic Settings');
+
         $I->amGoingTo('fill the basic settings form');
-        
-        $I->fillField('#accountsettings-tags', 'Tester, Actor');
+
+        $I->selectFromPicker('#accountsettings-tags', 'Tester');
+        $I->selectFromPicker('#accountsettings-tags', 'Actor');
         #$I->selectOption('#accountsettings-language', 'Deutsch');
         $I->click('Save');
-        
+
         /*
         $I->expectTo('see the german translation');
         $I->see('Sprache');
         $I->see('Speichern');
         $I->click('Save');
-        $I->waitForElementVisible('.data-saved', 5);
-        
+        $I->seeSuccess();
+
         $I->selectOption('#accountsettings-language', 'English(US)');
         $I->click('Save');
-        $I->waitForElementVisible('.data-saved', 5);
+        $I->seeSuccess();
         */
-        
+
         $I->seeSuccess('Saved');
 
-        $I->amOnProfile();
+        //$I->amOnProfile();
         $directory = DirectoryPage::openBy($I);
         $directory->clickMembers();
         $I->expectTo('see my user tags');
         $I->see('Tester');
         $I->see('Actor');
     }
-    
+
     public function testSaveBaseNotifications(AcceptanceTester $I)
     {
         $I->wantTo('ensure that the notification settings can be saved');
-        
+
         $I->amGoingTo('save access my account settings');
         $I->amUser();
         $I->amOnProfile();
-        
+
         $I->click('Edit account');
-        $I->waitForText('Account settings');
-        $I->click('Settings');
-        $I->waitForText('User settings');
-        
+        $I->waitForText('Your Account');
+        $I->click('General');
+        $I->waitForText('Basic Settings');
+
         $I->click('Notifications'); //Notification tab
         $I->waitForText('Notification Settings');
-        
+
         $I->expectTo('see the notification settings form');
         $I->see('Following');
         $I->see('Mentionings');
@@ -74,9 +76,9 @@ class AccountCest
 
         $I->scrollToBottom();
         $I->click('Save', '.panel-body');
-        
+
         $I->seeSuccess('Saved');
-        
+
         // Todo proper checkbox tests...
         /*$I->amOnPage('index-test.php?r=notification%2Fuser');
         $I->waitForText('Notification Settings');

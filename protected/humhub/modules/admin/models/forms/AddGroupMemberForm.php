@@ -8,6 +8,7 @@
 
 namespace humhub\modules\admin\models\forms;
 
+use Yii;
 use yii\base\Model;
 use yii\web\HttpException;
 use humhub\modules\user\models\User;
@@ -20,16 +21,15 @@ use humhub\modules\user\models\Group;
  */
 class AddGroupMemberForm extends Model
 {
-
     /**
      * GroupId selection array of the form.
-     * @var type
+     * @var array
      */
     public $userGuids;
 
     /**
      * User model object
-     * @var type
+     * @var int
      */
     public $groupId;
 
@@ -39,7 +39,7 @@ class AddGroupMemberForm extends Model
     public function rules()
     {
         return [
-            [['userGuids', 'groupId'], 'required']
+            [['userGuids', 'groupId'], 'required'],
         ];
     }
 
@@ -49,36 +49,32 @@ class AddGroupMemberForm extends Model
     public function attributeLabels()
     {
         return [
-            'userGuids' => 'Add Members'
+            'userGuids' => 'Add Members',
         ];
     }
 
     /**
-     * Sets the user data and intitializes the from selection
-     * @param type $user
-     */
-    public function setUser($group)
-    {
-        //Set form user and current group settings
-        $this->group = $group;
-    }
-
-    /**
      * Aligns the given group selection with the db
-     * @return boolean
+     * @return bool
+     * @throws HttpException
      */
     public function save()
     {
         $group = $this->getGroup();
 
-        if($group == null) {
-            throw new HttpException(404, Yii::t('AdminModule.models_form_AddGroupMemberForm', 'Group not found!'));
+        if (!$group) {
+            throw new HttpException(404, Yii::t('AdminModule.user', 'Group not found!'));
+        }
+
+        // Ensure the current user is allowed to manage this specific group
+        if (!$group->canManage()) {
+            throw new HttpException(403, 'No permission to manage this group.');
         }
 
         foreach ($this->userGuids as $userGuid) {
             $user = User::findIdentityByAccessToken($userGuid);
-            if($user != null) {
-               $group->addUser($user);
+            if ($user) {
+                $group->addUser($user);
             }
         }
 
@@ -87,6 +83,6 @@ class AddGroupMemberForm extends Model
 
     public function getGroup()
     {
-        return Group::findOne($this->groupId);
+        return Group::findOne(['id' => $this->groupId]);
     }
 }

@@ -8,44 +8,105 @@
 
 namespace humhub\modules\content\models;
 
-use Yii;
-use humhub\modules\user\components\PermissionManager;
-use yii\base\Exception;
-use yii\base\InvalidParamException;
-use yii\helpers\Url;
-use humhub\modules\user\models\User;
-use humhub\modules\space\models\Space;
+use humhub\components\ActiveRecord;
+use humhub\components\behaviors\GUID;
+use humhub\components\behaviors\PolymorphicRelation;
+use humhub\components\Module;
+use humhub\interfaces\ArchiveableInterface;
+use humhub\interfaces\EditableInterface;
+use humhub\interfaces\ViewableInterface;
+use humhub\libs\UUIDValidator;
+use humhub\modules\activity\models\Activity;
+use humhub\modules\activity\services\ActivityManager;
+use humhub\modules\content\activities\ContentCreatedActivity;
 use humhub\modules\content\components\ContentActiveRecord;
 use humhub\modules\content\components\ContentContainerActiveRecord;
+use humhub\modules\content\components\ContentContainerModule;
+use humhub\modules\content\events\ContentEvent;
+use humhub\modules\content\events\ContentStateEvent;
+use humhub\modules\content\interfaces\ContentOwner;
+use humhub\modules\content\interfaces\ContentProvider;
+use humhub\modules\content\interfaces\SoftDeletable;
+use humhub\modules\content\live\NewContent;
+use humhub\modules\content\notifications\ContentCreated as NotificationsContentCreated;
+use humhub\modules\content\permissions\CreatePrivateContent;
+use humhub\modules\content\permissions\CreatePublicContent;
 use humhub\modules\content\permissions\ManageContent;
-use yii\rbac\Permission;
+use humhub\modules\content\services\ContentSearchService;
+use humhub\modules\content\services\ContentStateService;
+use humhub\modules\notification\models\Notification;
+use humhub\modules\space\models\Space;
+use humhub\modules\user\components\PermissionManager;
+use humhub\modules\user\helpers\AuthHelper;
+use humhub\modules\user\helpers\UserHelper;
+use humhub\modules\user\models\User;
+use Throwable;
+use Yii;
+use yii\base\Exception;
+use yii\base\InvalidConfigException;
+use yii\db\ActiveQuery;
+use yii\db\IntegrityException;
+use yii\db\StaleObjectException;
+use yii\helpers\Url;
 
 /**
- * This is the model class for table "content".
+ * This is the model class for table "content". The content model serves as relation between a [[ContentContainer]] and
+ * [[ContentActiveRecord]] entries and contains shared content features as
  *
+ *  - read/write permission checks
+ *  - move content
+ *  - pin content
+ *  - archive content
+ *  - content author and update information
+ *  - stream relation by `stream_channel` field
  *
- * The followings are the available columns in table 'content':
- * @property integer $id
+ * The relation to [[ContentActiveRecord]] models is defined by a polymorphic relation
+ * `object_model` and `object_id` content table fields.
+ *
+ * The relation to [[ContentContainer]] is defined by `contentContainer_id` field.
+ *
+ * Note: Instances of this class are automatically created and saved by the [[ContentActiveRecord]] model and should not
+ * manually be created or deleted to maintain data integrity.
+ *
+ * @property int $id
  * @property string $guid
  * @property string $object_model
- * @property integer $object_id
- * @property integer $visibility
- * @property integer $pinned
- * @property string $archived
- * @property string $created_at
- * @property integer $created_by
- * @property string $updated_at
- * @property integer $updated_by
- * @property ContentContainer $contentContainer
+ * @property int $object_id
  * @property string $stream_sort_date
  * @property string $stream_channel
- * @property integer $contentcontainer_id;
+ * @property int $contentcontainer_id
+ * @property int $visibility
+ * @property int $pinned
+ * @property int $archived
+ * @property int $hidden
+ * @property int $state
+ * @property int $was_published
+ * @property string $scheduled_at
+ * @property int $locked_comments
+ * @property string $created_at
+ * @property int $created_by
+ * @property string $updated_at
+ * @property int $updated_by
+ * @property ContentContainer $contentContainer
+ * @property-read mixed $contentName
+ * @property-read mixed $content
+ * @property-read ActiveQuery $tagRelations
+ * @property-read ContentActiveRecord $model
+ * @property-read mixed $contentDescription
+ * @property-read ContentStateService $stateService
+ * @property-read ContentTag[] $tags
  * @property ContentContainerActiveRecord $container
- *
+ * @mixin PolymorphicRelation
+ * @mixin GUID
  * @since 0.5
  */
-class Content extends ContentDeprecated
+class Content extends ActiveRecord implements Movable, ContentOwner, ArchiveableInterface, EditableInterface, ViewableInterface, SoftDeletable
 {
+    /**
+     * The default stream channel.
+     * @since 1.6
+     */
+    public const STREAM_CHANNEL_DEFAULT = 'default';
 
     /**
      * A array of user objects which should informed about this new content.
@@ -57,28 +118,51 @@ class Content extends ContentDeprecated
     /**
      * @var int The private visibility mode (e.g. for space member content or user profile posts for friends)
      */
-    const VISIBILITY_PRIVATE = 0;
+    public const VISIBILITY_PRIVATE = 0;
 
     /**
      * @var int Public visibility mode, e.g. content which are visibile for followers
      */
-    const VISIBILITY_PUBLIC = 1;
+    public const VISIBILITY_PUBLIC = 1;
 
     /**
      * @var int Owner visibility mode, only visible for contentContainer + content owner
      */
-    const VISIBILITY_OWNER = 2;
+    public const VISIBILITY_OWNER = 2;
+
+    /**
+     * Content States - By default, only content with the "Published" state is returned.
+     */
+    public const STATE_PUBLISHED = 1;
+    public const STATE_DRAFT = 10;
+    public const STATE_SCHEDULED = 20;
+    public const STATE_DELETED = 100;
 
     /**
      * @var ContentContainerActiveRecord the Container (e.g. Space or User) where this content belongs to.
      */
     protected $_container = null;
-    
+
     /**
-     * @var bool flag to disable the creation of default social activities like activity and notifications in afterSave() at content creation.
-     * @deprecated since v1.2.3 use ContentActiveRecord::silentContentCreation instead.
+     * @event Event is used when a Content state is changed.
      */
-    public $muteDefaultSocialActivities = false;
+    public const EVENT_STATE_CHANGED = 'changedState';
+
+    /**
+     * @event ContentEvent triggered right before a Content record is hard deleted.
+     *
+     * Content addon modules (e.g. Comment, Like) that reference `content_id` with a
+     * restrictive foreign key must clean up their records on this event. This is
+     * required in addition to `ContentActiveRecord::EVENT_BEFORE_DELETE`, because that
+     * event is only triggered while deleting the polymorphic content object itself
+     * (e.g. a Post). When a Content record is hard deleted directly - e.g. because its
+     * polymorphic content object no longer exists (see IntegrityController) -
+     * `ContentActiveRecord::EVENT_BEFORE_DELETE` never fires and addon cleanup would
+     * otherwise be skipped, causing foreign key constraint violations.
+     *
+     * @since 1.19
+     */
+    public const EVENT_BEFORE_HARD_DELETE = 'beforeHardDelete';
 
     /**
      * @inheritdoc
@@ -87,11 +171,11 @@ class Content extends ContentDeprecated
     {
         return [
             [
-                'class' => \humhub\components\behaviors\PolymorphicRelation::className(),
-                'mustBeInstanceOf' => array(ContentActiveRecord::className()),
+                'class' => PolymorphicRelation::class,
+                'mustBeInstanceOf' => [ContentActiveRecord::class],
             ],
             [
-                'class' => \humhub\components\behaviors\GUID::className(),
+                'class' => GUID::class,
             ],
         ];
     }
@@ -112,26 +196,38 @@ class Content extends ContentDeprecated
         return [
             [['object_id', 'visibility', 'pinned'], 'integer'],
             [['archived'], 'safe'],
-            [['guid'], 'string', 'max' => 45],
+            [['guid'], UUIDValidator::class],
+            [['guid'], 'unique'],
             [['object_model'], 'string', 'max' => 100],
             [['object_model', 'object_id'], 'unique', 'targetAttribute' => ['object_model', 'object_id'], 'message' => 'The combination of Object Model and Object ID has already been taken.'],
-            [['guid'], 'unique']
         ];
     }
 
     /**
-     * Returns a Content Object by given Class and ID
+     * Returns a [[ContentActiveRecord]] model by given polymorphic relation class and id.
+     * If there is no existing content relation with this model instance, null is returned.
      *
      * @param string $className Class Name of the Content
      * @param int $id Primary Key
+     * @return ContentActiveRecord|null
+     * @throws IntegrityException
      */
     public static function Get($className, $id)
     {
         $content = self::findOne(['object_model' => $className, 'object_id' => $id]);
-        if ($content != null) {
-            return $className::findOne(['id' => $id]);
+        if ($content) {
+            return $content->getModel();
         }
+
         return null;
+    }
+
+    /**
+     * @since 1.3
+     */
+    public function getModel(): ?ContentActiveRecord
+    {
+        return $this->getPolymorphicRelation();
     }
 
     /**
@@ -143,24 +239,43 @@ class Content extends ContentDeprecated
             throw new Exception("Could not save content with object_model or object_id!");
         }
 
-        // Set some default values
-        if (!$this->archived) {
-            $this->archived = 0;
-        }
-        if (!$this->visibility) {
+        $this->archived ??= 0;
+        $this->pinned ??= 0;
+        $this->state ??= Content::STATE_PUBLISHED;
+
+        $this->visibility = (int)($this->visibility ?? self::VISIBILITY_PRIVATE);
+        // Force to private content for private space or if user has no permission to create public content.
+        //
+        // NOTE: the "no permission to create public content" branch only applies when the visibility is
+        // actually being *changed* to public ($insert, or an existing record whose `visibility` attribute
+        // was just switched to public - see isAttributeChanged() below). The permission being checked here
+        // is about *making* content public, not about keeping it public - matching actionToggleVisibility()/
+        // VisibilityLink. Without this guard, ANY save of an already-public record (e.g. a trivial unrelated
+        // field edit) by an editor who can manage/edit the content but lacks CreatePublicContent in this
+        // container (e.g. a system admin editing another user's content for moderation, or a space role that
+        // has "Manage entries" but not "Create public content") would silently flip the content back to
+        // private for everyone else - with no warning shown anywhere in the UI. Reported and discussed in
+        // https://github.com/humhub/humhub/issues/8443 - has been silently demoting content since 1.15.3.
+        if ($this->container instanceof Space
+            && $this->container->visibility !== Space::VISIBILITY_ALL
+            && $this->visibility === self::VISIBILITY_PUBLIC
+            && (
+                $this->container->visibility === Space::VISIBILITY_NONE
+                || (
+                    Yii::$app->user->identity // Allow creating public content from console
+                    && ($insert || $this->isAttributeChanged('visibility', false))
+                    && !$this->container->can(CreatePublicContent::class)
+                )
+            )
+        ) {
             $this->visibility = self::VISIBILITY_PRIVATE;
-        }
-        if (!$this->pinned) {
-            $this->pinned = 0;
         }
 
         if ($insert) {
-            if ($this->created_by == "") {
-                $this->created_by = Yii::$app->user->id;
-            }
+            $this->created_by ??= Yii::$app->user->id;
         }
 
-        $this->stream_sort_date = new \yii\db\Expression('NOW()');
+        $this->stream_sort_date = date('Y-m-d H:i:s');
 
         if ($this->created_by == "") {
             throw new Exception("Could not save content without created_by!");
@@ -174,41 +289,98 @@ class Content extends ContentDeprecated
      */
     public function afterSave($insert, $changedAttributes)
     {
-        /* @var $contentSource ContentActiveRecord */
-        $contentSource = $this->getPolymorphicRelation();
+        if (array_key_exists('state', $changedAttributes)) {
+            // Run process for new content(Send notifications) only after changing state
+            $this->processNewContent($insert);
+
+            $model = $this->getModel();
+            if (!$insert && $model instanceof ContentActiveRecord && $this->getStateService()->isPublished()) {
+                // Run process to send notifications like mentioning users, for cases when
+                // it was not published on creating or on updating published Content
+                $model->afterSave(false, []);
+            }
+
+            $previousState = $changedAttributes['state'] ?? null;
+            $this->trigger(self::EVENT_STATE_CHANGED, new ContentStateEvent([
+                'content' => $this,
+                'newState' => $this->state,
+                'previousState' => $previousState,
+            ]));
+
+            if ($model instanceof ContentActiveRecord) {
+                $model->afterStateChange($this->state, $previousState);
+            }
+
+            if (!$this->getStateService()->wasPublished() && (int)$previousState === self::STATE_PUBLISHED) {
+                $this->updateAttributes(['was_published' => 1]);
+            }
+        }
+
+        if (!$insert && array_key_exists('visibility', $changedAttributes)) {
+            ActivityManager::afterContentChange($this);
+        }
+
+        (new ContentSearchService($this))->update();
+
+        parent::afterSave($insert, $changedAttributes);
+    }
+
+    private function processNewContent($insert)
+    {
+        if (!$this->getStateService()->isPublished()) {
+            // Don't notify about not published Content
+            return;
+        }
+
+        if ($this->getStateService()->wasPublished()) {
+            // No need to notify twice for already published Content before
+            return;
+        }
+
+        if (!$insert) {
+            // Update creation datetime after first publishing
+            $this->updateAttributes(['created_at' => date('Y-m-d H:i:s')]);
+        }
+
+        $record = $this->getModel();
+
+        Yii::debug('Process new content: ' . ($record !== null ? $record::class : self::class) . ' ID: ' . $record->getPrimaryKey(), 'content');
 
         foreach ($this->notifyUsersOfNewContent as $user) {
-            $contentSource->follow($user->id);
+            $record->follow($user->id);
         }
 
         // TODO: handle ContentCreated notifications and live events for global content
-        if ($insert && !$this->isMuted()) {
+
+        if (!$this->isMuted()) {
             $this->notifyContentCreated();
         }
 
-        if($this->container) {
-            Yii::$app->live->send(new \humhub\modules\content\live\NewContent([
+        if ($this->container) {
+            Yii::$app->live->send(new NewContent([
                 'sguid' => ($this->container instanceof Space) ? $this->container->guid : null,
                 'uguid' => ($this->container instanceof User) ? $this->container->guid : null,
-                'originator' => $this->user->guid,
+                'originator' => $this->createdBy->guid,
                 'contentContainerId' => $this->container->contentContainerRecord->id,
                 'visibility' => $this->visibility,
-                'sourceClass' => $contentSource->className(),
-                'sourceId' => $contentSource->getPrimaryKey(),
+                'sourceClass' => PolymorphicRelation::getObjectModel($record),
+                'sourceId' => $record->getPrimaryKey(),
                 'silent' => $this->isMuted(),
-                'contentId' => $this->id
+                'streamChannel' => $this->stream_channel,
+                'contentId' => $this->id,
+                'insert' => true,
             ]));
         }
-
-        return parent::afterSave($insert, $changedAttributes);
     }
+
 
     /**
      * @return bool checks if the given content allows content creation notifications and activities
+     * @throws IntegrityException
      */
     private function isMuted()
     {
-        return $this->getPolymorphicRelation()->silentContentCreation || $this->muteDefaultSocialActivities || !$this->container;
+        return $this->getPolymorphicRelation()->silentContentCreation || $this->getModel()->silentContentCreation || !$this->container;
     }
 
     /**
@@ -216,31 +388,120 @@ class Content extends ContentDeprecated
      */
     private function notifyContentCreated()
     {
+        /** @var ContentProvider $contentSource */
         $contentSource = $this->getPolymorphicRelation();
-        $notifyUsers = array_merge($this->notifyUsersOfNewContent, Yii::$app->notification->getFollowers($this));
 
-        \humhub\modules\content\notifications\ContentCreated::instance()
-            ->from($this->user)
+        $userQuery = Yii::$app->notification->getFollowers($this);
+        if (count($this->notifyUsersOfNewContent) != 0) {
+            // Add manually notified users
+            $userQuery->union(
+                User::find()->active()->where(['IN', 'user.id', array_map(fn(User $user) => $user->id, $this->notifyUsersOfNewContent)]),
+            );
+        }
+
+        NotificationsContentCreated::instance()
+            ->from($this->createdBy)
             ->about($contentSource)
-            ->sendBulk($notifyUsers);
+            ->sendBulk($userQuery);
 
-        \humhub\modules\content\activities\ContentCreated::instance()
-            ->from($this->user)
-            ->about($contentSource)->save();
+        ActivityManager::dispatch(ContentCreatedActivity::class, $contentSource, $this->createdBy);
+    }
+
+    /**
+     * Marks this content for deletion (soft delete).
+     * Use `hardDelete()` method to delete a content immediately.
+     *
+     * @inheritdoc
+     * @deprecated since 1.19 (will throw error in future)
+     */
+    public function delete()
+    {
+        return $this->softDelete();
+        // TODO: since 1.20
+        // throw new Exception('Forbidden Content->delete()! Use Content->getPolymorphicRelation()->delete() instead!');
     }
 
     /**
      * @inheritdoc
+     * @deprecated since 1.19
+     * @hint Use event ContentActiveRecord::EVENT_BEFORE_SOFT_DELETE instead
      */
-    public function afterDelete()
+    public function beforeSoftDelete(): bool
     {
-        // Try delete the underlying object (Post, Question, Task, ...)
-        $this->resetPolymorphicRelation();
-        if ($this->getPolymorphicRelation() !== null) {
-            $this->getPolymorphicRelation()->delete();
-        }
+        $event = new ContentEvent(['content' => $this]);
+        $this->trigger(self::EVENT_BEFORE_SOFT_DELETE, $event);
 
-        parent::afterDelete();
+        return $event->isValid;
+    }
+
+    /**
+     * @inheritdoc
+     * @deprecated since 1.19 Use ContentActiveRecord::softDelete() instead
+     */
+    public function softDelete(): bool
+    {
+        $record = $this->getPolymorphicRelation();
+        return $record instanceof ContentActiveRecord ? $record->softDelete() : false;
+    }
+
+    /**
+     * Marks the Content as deleted.
+     * (It must be called only from ContentActiveRecord)
+     *
+     * @return bool
+     * @since 1.19
+     */
+    public function softDeleteInternal(): bool
+    {
+        Notification::deleteAll([
+            'source_class' => PolymorphicRelation::getObjectModel($this),
+            'source_pk' => $this->getPrimaryKey(),
+        ]);
+
+        return $this->getStateService()->delete();
+    }
+
+    /**
+     * @inheritdoc
+     * @deprecated since 1.19
+     * @hint Use event ContentActiveRecord::EVENT_AFTER_SOFT_DELETE instead
+     */
+    public function afterSoftDelete()
+    {
+        $this->trigger(self::EVENT_AFTER_SOFT_DELETE, new ContentEvent(['content' => $this]));
+    }
+
+    /**
+     * Deletes this content immediately and permanently
+     * including the underlying record and its files.
+     *
+     * @return bool
+     * @throws Throwable
+     * @throws StaleObjectException
+     * @since 1.14
+     * @deprecated since 1.19 ContentActiveRecord::hardDelete() instead
+     */
+    public function hardDelete(): bool
+    {
+        $record = $this->getPolymorphicRelation();
+
+        return $record === null ? $this->hardDeleteInternal() : $record->hardDelete();
+    }
+
+    /**
+     * Deletes this content immediately and permanently.
+     * (It must be called only from ContentActiveRecord)
+     *
+     * @return bool
+     * @since 1.19
+     */
+    public function hardDeleteInternal(): bool
+    {
+        $this->trigger(self::EVENT_BEFORE_HARD_DELETE, new ContentEvent(['content' => $this]));
+
+        Activity::deleteAll(['content_id' => $this->id]);
+
+        return parent::delete() !== false;
     }
 
     /**
@@ -256,7 +517,7 @@ class Content extends ContentDeprecated
     /**
      * Checks if the content visiblity is set to public.
      *
-     * @return boolean
+     * @return bool
      */
     public function isPublic()
     {
@@ -264,9 +525,9 @@ class Content extends ContentDeprecated
     }
 
     /**
-     * Checks if the content visiblity is set to private.
+     * Checks if the content visibility is set to private.
      *
-     * @return boolean
+     * @return bool
      */
     public function isPrivate()
     {
@@ -274,13 +535,23 @@ class Content extends ContentDeprecated
     }
 
     /**
+     * Checks if comments are locked for the content.
+     *
+     * @return bool
+     */
+    public function isLockedComments(): bool
+    {
+        return (bool)$this->locked_comments;
+    }
+
+    /**
      * Checks if the content object is pinned
      *
-     * @return Boolean
+     * @return bool
      */
-    public function isPinned()
+    public function isPinned(): bool
     {
-        return ($this->pinned);
+        return (bool)$this->pinned;
     }
 
     /**
@@ -298,7 +569,6 @@ class Content extends ContentDeprecated
      */
     public function unpin()
     {
-
         $this->pinned = 0;
         $this->updateAttributes(['pinned']);
     }
@@ -307,15 +577,26 @@ class Content extends ContentDeprecated
      * Checks if the user can pin this content.
      * This is only allowed for workspace owner.
      *
-     * @return boolean
+     * @return bool
+     * @throws Exception
+     * @throws InvalidConfigException
      */
-    public function canPin()
+    public function canPin(): bool
     {
+        // Currently global content can not be pinned
+        if (!$this->getContainer()) {
+            return false;
+        }
+
         if ($this->isArchived()) {
             return false;
         }
 
-        return $this->getContainer()->permissionManager->can(new ManageContent());
+        if (Yii::$app->user->identity?->canManageAllContent()) {
+            return true;
+        }
+
+        return $this->getContainer()->permissionManager->can(ManageContent::class);
     }
 
     /**
@@ -331,9 +612,10 @@ class Content extends ContentDeprecated
     /**
      * Checks if current content object is archived
      *
-     * @return boolean
+     * @return bool
+     * @throws Exception
      */
-    public function isArchived()
+    public function isArchived(): bool
     {
         return $this->archived || ($this->getContainer() !== null && $this->getContainer()->isArchived());
     }
@@ -342,46 +624,179 @@ class Content extends ContentDeprecated
      * Checks if the current user can archive this content.
      * The content owner and the workspace admin can archive contents.
      *
-     * @return boolean
+     * @param User|int|null $user the User (see UserHelper::getUserByParam())
+     * @return bool
      */
-    public function canArchive()
+    public function canArchive($user = null): bool
     {
-        // Disabled on user profiles, there is no stream filter available yet.
-        if ($this->getContainer() instanceof User) {
+        $user = UserHelper::getUserByParam($user);
+
+        if ($user === null) {
             return false;
         }
 
-        return $this->getContainer()->permissionManager->can(new ManageContent());
+        // Currently global content can not be archived
+        if (!$container = $this->getContainer()) {
+            return $this->canEdit($user);
+        }
+
+        // No need to archive content on an archived container, content is marked as archived already
+        if ($container->isArchived()) {
+            return false;
+        }
+
+        if ($user?->canManageAllContent()) {
+            return true;
+        }
+
+        return $container->getPermissionManager($user)->can(new ManageContent());
     }
 
     /**
-     * Archives the content object
+     * @inheritdoc
      */
-    public function archive()
+    public function archive(): bool
     {
-        if ($this->canArchive()) {
-
-            if ($this->isPinned()) {
-                $this->unpin();
-            }
-
-            $this->archived = 1;
-            if (!$this->save()) {
-                throw new Exception("Could not archive content!" . print_r($this->getErrors(), 1));
-            }
+        if ($this->isPinned()) {
+            $this->unpin();
         }
+
+        $this->archived = 1;
+        return $this->save();
     }
 
     /**
-     * Unarchives the content object
+     * {@inheritdoc}
+     * @throws Throwable
      */
-    public function unarchive()
+    public function move(?ContentContainerActiveRecord $container = null, $force = false)
     {
-        if ($this->canArchive()) {
+        $move = ($force) ? true : $this->canMove($container);
 
-            $this->archived = 0;
-            $this->save();
+        if ($move === true) {
+            static::getDb()->transaction(function ($db) use ($container): void {
+                $this->setContainer($container);
+                if ($this->updateAttributes(['contentcontainer_id', 'visibility'])) {
+                    ContentTag::deleteContentRelations($this, false);
+                    $model = $this->getModel();
+                    $model->populateRelation('content', $this);
+                    $model->afterMove($container);
+                }
+            });
+            ActivityManager::afterContentChange($this);
         }
+
+        return $move;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function canMove(?ContentContainerActiveRecord $container = null)
+    {
+        $model = $this->getModel();
+
+        $canModelBeMoved = $this->isModelMovable($container);
+        if ($canModelBeMoved !== true) {
+            return $canModelBeMoved;
+        }
+
+        if (!$container) {
+            return $this->checkMovePermission() ? true : Yii::t('ContentModule.base', 'You do not have the permission to move this content.');
+        }
+
+        if ($container->contentcontainer_id === $this->contentcontainer_id) {
+            return Yii::t('ContentModule.base', 'The content can\'t be moved to its current space.');
+        }
+
+        // Check if the related module is installed on the target space
+        if (!$container->moduleManager->isEnabled($model->getModuleId())) {
+            /* @var $module Module */
+            $module = Yii::$app->getModule($model->getModuleId());
+            $moduleName = ($module instanceof ContentContainerModule) ? $module->getContentContainerName($container) : $module->getName();
+            return Yii::t('ContentModule.base', 'The module {moduleName} is not enabled on the selected target space.', ['moduleName' => $moduleName]);
+        }
+
+        // Check if the current user is allowed to move this content at all
+        if (!$this->checkMovePermission()) {
+            return Yii::t('ContentModule.base', 'You do not have the permission to move this content.');
+        }
+
+        // Check if the current user is allowed to move this content to the given target space
+        if (!$this->checkMovePermission($container)) {
+            return Yii::t('ContentModule.base', 'You do not have the permission to move this content to the given space.');
+        }
+
+        // Check if the content owner is allowed to create content on the target space
+        $ownerPermissions = $container->getPermissionManager($this->createdBy);
+        if ($this->isPrivate() && !$ownerPermissions->can(CreatePrivateContent::class)) {
+            return Yii::t('ContentModule.base', 'The author of this content is not allowed to create private content within the selected space.');
+        }
+
+        if ($this->isPublic() && !$ownerPermissions->can(CreatePublicContent::class)) {
+            return Yii::t('ContentModule.base', 'The author of this content is not allowed to create public content within the selected space.');
+        }
+
+        return true;
+    }
+
+    public function isModelMovable(?ContentContainerActiveRecord $container = null)
+    {
+        $model = $this->getModel();
+        $canModelBeMoved = $model->canMove($container);
+        if ($canModelBeMoved !== true) {
+            return $canModelBeMoved;
+        }
+
+        // Check for legacy modules
+        if (!$model->getModuleId()) {
+            return Yii::t('ContentModule.base', 'This content type can\'t be moved due to a missing module-id setting.');
+        }
+
+        return true;
+    }
+
+    /**
+     * Checks if the current user has generally the permission to move this content on the given container or the current container if no container was provided.
+     *
+     * Note this function is only used for a general permission check use [[canMove()]] for a
+     *
+     * This is the case if:
+     *
+     * - The current user is the owner of this content
+     * @param ContentContainerActiveRecord|null $container
+     * @return bool determines if the current user is generally permitted to move content on the given container (or the related container if no container was provided)
+     * @throws IntegrityException
+     * @throws Throwable
+     * @throws InvalidConfigException
+     */
+    public function checkMovePermission(?ContentContainerActiveRecord $container = null)
+    {
+        if (!$container) {
+            $container = $this->container;
+        }
+
+        return
+            $this->getModel()->isOwner()
+            || Yii::$app->user->identity?->canManageAllContent()
+            || $container->can(ManageContent::class);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function afterMove(?ContentContainerActiveRecord $container = null)
+    {
+        // Nothing to do
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function unarchive(): bool
+    {
+        $this->archived = 0;
+        return $this->save();
     }
 
     /**
@@ -390,18 +805,35 @@ class Content extends ContentDeprecated
      * By default is returns the url of the wall entry.
      *
      * Optionally it's possible to create an own getUrl method in the underlying
-     * HActiveRecordContent (e.g. Post) to overwrite this behavior.
+     * ContentActiveRecord (e.g. Post) to overwrite this behavior.
      * e.g. in case there is no wall entry available for this content.
      *
+     * @param bool $scheme
+     * @return string the URL
      * @since 0.11.1
      */
-    public function getUrl()
+    public function getUrl($scheme = false)
     {
-        if (method_exists($this->getPolymorphicRelation(), 'getUrl')) {
-            return $this->getPolymorphicRelation()->getUrl();
+        try {
+            if (method_exists($this->getPolymorphicRelation(), 'getUrl')) {
+                $url = $this->getPolymorphicRelation()->getUrl($scheme);
+
+                // getUrl() is an open extension point; most implementations
+                // (e.g. Post) currently ignore $scheme and return a relative URL.
+                // Enforce an absolute URL when a scheme was requested, unless the
+                // implementation already returned one. Once the models honor
+                // $scheme themselves, this becomes a no-op.
+                if ($scheme && !str_starts_with((string) $url, 'http')) {
+                    $url = Url::to($url, $scheme);
+                }
+
+                return $url;
+            }
+        } catch (IntegrityException $e) {
+            Yii::error($e->getMessage(), 'content');
         }
 
-        return Url::toRoute(['/content/perma', 'id' => $this->id]);
+        return Url::toRoute(['/content/perma', 'id' => $this->id], $scheme);
     }
 
     /**
@@ -442,108 +874,125 @@ class Content extends ContentDeprecated
      * Relation to ContentContainer model
      * Note: this is not a Space or User instance!
      *
+     * @return ActiveQuery
      * @since 1.1
-     * @return \yii\db\ActiveQuery
      */
     public function getContentContainer()
     {
-        return $this->hasOne(ContentContainer::className(), ['id' => 'contentcontainer_id']);
+        return $this->hasOne(ContentContainer::class, ['id' => 'contentcontainer_id']);
     }
 
     /**
      * Returns the ContentTagRelation query.
      *
+     * @return ActiveQuery
      * @since 1.2.2
-     * @return \yii\db\ActiveQuery
      */
     public function getTagRelations()
     {
-        return $this->hasMany(ContentTagRelation::className(), ['content_id' => 'id']);
+        return $this->hasMany(ContentTagRelation::class, ['content_id' => 'id']);
     }
 
     /**
      * Returns all content related tags ContentTags related to this content.
      *
+     * @return ActiveQuery
      * @since 1.2.2
-     * @return \yii\db\ActiveQuery
      */
-    public function getTags()
+    public function getTags($tagClass = ContentTag::class)
     {
-        return $this->hasMany(ContentTag::class, ['id' => 'tag_id'])->via('tagRelations');
+        return $this->hasMany($tagClass, ['id' => 'tag_id'])
+            ->via('tagRelations')
+            ->orderBy($tagClass::tableName() . '.sort_order');
     }
 
     /**
-     * Adds a new ContentTagRelation for this content and the given $tag instance.
-     *
-     * @since 1.2.2
-     * @throws InvalidParamException if the provided tag is part of another ContentContainer
-     * @return boolean true if tag relation could be saved or is already assigned otherwise false
-     */
-    public function addTag(ContentTag $tag)
-    {
-        if (!empty($tag->contentcontainer_id) && $tag->contentcontainer_id != $this->contentcontainer_id) {
-            throw new InvalidParamException(Yii::t('ContentModule.base', 'Content Tag with invalid contentcontainer_id assigned.'));
-        }
-
-        if (ContentTagRelation::findBy($this, $tag)->count()) {
-            return true;
-        }
-
-        unset($this->tags);
-
-        $contentRelation = new ContentTagRelation($this, $tag);
-        return $contentRelation->save();
-    }
-
-    /**
-     * Checks if the given user can edit this content.
+     * Checks if the given user can edit/create this content.
      *
      * A user can edit a content if one of the following conditions are met:
      *
      *  - User is the owner of the content
-     *  - User is system administrator and the content module setting `adminCanEditAllContent` is set to true (default)
+     *  - User can Manage Content
      *  - The user is granted the managePermission set by the model record class
      *  - The user meets the additional condition implemented by the model records class own `canEdit()` function.
      *
+     * @param User|int|null $user the User (see UserHelper::getUserByParam())
+     * @return bool can edit/create this content
+     * @throws Exception
+     * @throws IntegrityException
+     * @throws Throwable
+     * @throws InvalidConfigException
      * @since 1.1
-     * @param User $user
-     * @return bool can edit this content
      */
-    public function canEdit($user = null)
+    public function canEdit($user = null): bool
     {
-        if (Yii::$app->user->isGuest) {
+        $user = UserHelper::getUserByParam($user);
+
+        if ($user === null) {
             return false;
         }
 
-        if ($user === null) {
-            $user = Yii::$app->user->getIdentity();
-        }
-
-        // Only owner can edit his content
-        if ($user !== null && $this->created_by == $user->id) {
+        // Owner can edit his content
+        if ($this->created_by === $user->id) {
             return true;
         }
 
-        // Global Admin can edit/delete arbitrarily content
-        if (Yii::$app->getModule('content')->adminCanEditAllContent && $user->isSystemAdmin()) {
+        // System Admins can edit User content for moderation purposes
+        if (
+            $this->id // The content exists
+            && $this->container instanceof User
+            && $user->isSystemAdmin()
+        ) {
             return true;
         }
 
-        /* @var $model ContentActiveRecord */
-        $model = $this->getPolymorphicRelation();
+        if ($user?->canManageAllContent()) {
+            return true;
+        }
+
+        $model = $this->getModel();
 
         // Check additional manage permission for the given container
-        if ($model->hasManagePermission() && $this->getContainer() && $this->getContainer()->getPermissionManager($user)->can($model->getManagePermission())) {
-            return true;
+        if ($this->container) {
+            if (($isNewRecord = $model->isNewRecord) && $model->hasCreatePermission() && $this->container->getPermissionManager($user)->can($model->getCreatePermission())) {
+                return true;
+            }
+            if (!$isNewRecord && $model->hasManagePermission() && $this->container->getPermissionManager($user)->can($model->getManagePermission())) {
+                return true;
+            }
         }
 
         // Check if underlying models canEdit implementation
-        // ToDo: Implement this as interface
-        if (method_exists($model, 'canEdit') && $model->canEdit($user)) {
+        // ToDo: Send deprecation waring when not implementing EditableInterface
+        if (($model instanceof EditableInterface || method_exists($model, 'canEdit')) && $model->canEdit($user)) {
             return true;
         }
 
         return false;
+    }
+
+    /**
+     * Checks if the user can lock comments for this content.
+     *
+     * @param User|int|null $user the User (see UserHelper::getUserByParam())
+     * @return bool
+     * @throws Exception
+     */
+    public function canLockComments($user = null): bool
+    {
+        $user = UserHelper::getUserByParam($user);
+
+        if ($user === null) {
+            return false;
+        }
+
+        if ($user->canManageAllContent()) {
+            return true;
+        }
+
+        return $this->container
+            ? $this->container->permissionManager->can(ManageContent::class)
+            : $this->canEdit($user);
     }
 
     /**
@@ -553,9 +1002,11 @@ class Content extends ContentDeprecated
      * @param $permission
      * @param array $params
      * @param bool $allowCaching
+     * @return bool
+     * @throws Exception
+     * @throws InvalidConfigException
      * @see PermissionManager::can()
      * @since 1.2.1
-     * @return bool
      */
     public function can($permission, $params = [], $allowCaching = true)
     {
@@ -563,26 +1014,37 @@ class Content extends ContentDeprecated
     }
 
     /**
-     * Checks if user can view this content.
-     *
-     * @since 1.1
-     * @param User $user
-     * @return boolean can view this content
+     * @param User|int|null $user the User (see UserHelper::getUserByParam())
+     * @throws InvalidConfigException
+     * @throws Exception
+     * @throws Throwable
      */
-    public function canView($user = null)
+    public function canView($user = null): bool
     {
-        if (!$user && !Yii::$app->user->isGuest) {
-            $user = Yii::$app->user->getIdentity();
+        $user = UserHelper::getUserByParam($user);
+
+        // Check Guest Visibility
+        if ($user === null) {
+            return $this->checkGuestAccess();
         }
 
-        // User cann access own content
-        if ($user !== null && $this->created_by == $user->id) {
+        // Check global content visibility, private global content is visible for logged in all users
+        if (empty($this->contentcontainer_id)) {
             return true;
         }
 
-        // Check Guest Visibility
-        if (!$user) {
-            return $this->checkGuestAccess();
+        if (!$this->isPublic() && $user->isCurrentUser() && !Yii::$app->user->impersonation->canAccessPrivateContent()) {
+            return false;
+        }
+
+        // User can access own content
+        if ($this->created_by === $user->id) {
+            return true;
+        }
+
+        // If content is not published(draft, in trash, unapproved) - restrict view access to editors
+        if (!$this->getStateService()->isPublished()) {
+            return $this->canEdit();
         }
 
         // Public visible content
@@ -590,11 +1052,11 @@ class Content extends ContentDeprecated
             return true;
         }
 
-        // Check system admin can see all content module configuration
-        if ($user->isSystemAdmin() && Yii::$app->getModule('content')->adminCanViewAllContent) {
+        // Check user can manage all content
+        if ($user->canManageAllContent()) {
             return true;
         }
-        
+
         if ($this->isPrivate() && $this->getContainer() !== null && $this->getContainer()->canAccessPrivateContent($user)) {
             return true;
         }
@@ -607,19 +1069,31 @@ class Content extends ContentDeprecated
      * This is the case if all of the following conditions are met:
      *
      *  - The content is public
-     *  - The `auth.allowGuestAccess` module setting is enabled
+     *  - The `auth.allowGuestAccess` setting is enabled
      *  - The space or profile visibility is set to VISIBILITY_ALL
      *
      * @return bool
      */
     public function checkGuestAccess()
     {
-        if (!$this->isPublic() || !Yii::$app->getModule('user')->settings->get('auth.allowGuestAccess')) {
+        if (!$this->isPublic() || !AuthHelper::isGuestAccessEnabled()) {
             return false;
         }
 
-        // Check container visibility for guests
-        return ($this->container instanceof Space && $this->container->visibility == Space::VISIBILITY_ALL) || ($this->container instanceof User && $this->container->visibility == User::VISIBILITY_ALL);
+        // GLobal content
+        if (!$this->container) {
+            return $this->isPublic();
+        }
+
+        if ($this->container instanceof Space) {
+            return $this->isPublic() && $this->container->visibility == Space::VISIBILITY_ALL;
+        }
+
+        if ($this->container instanceof User) {
+            return $this->isPublic() && $this->container->visibility == User::VISIBILITY_ALL;
+        }
+
+        return false;
     }
 
     /**
@@ -627,7 +1101,44 @@ class Content extends ContentDeprecated
      */
     public function updateStreamSortTime()
     {
-        $this->updateAttributes(['stream_sort_date' => new \yii\db\Expression('NOW()')]);
+        $this->updateAttributes(['stream_sort_date' => date('Y-m-d H:i:s')]);
     }
 
+    /**
+     * @returns Content content instance of this content owner
+     */
+    public function getContent()
+    {
+        return $this;
+    }
+
+    /**
+     * @returns string name of the content like 'comment', 'post'
+     */
+    public function getContentName()
+    {
+        return $this->getModel()->getContentName();
+    }
+
+    /**
+     * @returns string short content description
+     */
+    public function getContentDescription()
+    {
+        return $this->getModel()->getContentDescription();
+    }
+
+    /**
+     * @returns bool true if this content has been updated, otherwise false
+     * @since 1.7
+     */
+    public function isUpdated()
+    {
+        return $this->created_at !== $this->updated_at && !empty($this->updated_at) && is_string($this->updated_at);
+    }
+
+    public function getStateService(): ContentStateService
+    {
+        return new ContentStateService(['content' => $this]);
+    }
 }

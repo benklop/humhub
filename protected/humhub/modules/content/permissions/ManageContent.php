@@ -8,17 +8,33 @@
 
 namespace humhub\modules\content\permissions;
 
-use humhub\modules\user\models\User;
+use humhub\libs\BasePermission;
 use humhub\modules\space\models\Space;
+use humhub\modules\user\models\User;
+use Yii;
 
 /**
  * Manage content permission for a content container
- * 
+ *
  * @since 1.1
  * @author Luke
  */
-class ManageContent extends \humhub\libs\BasePermission
+class ManageContent extends BasePermission
 {
+    /**
+     * @inheritdoc
+     */
+    protected $moduleId = 'content';
+
+    /**
+     * @inheritdoc
+     */
+    protected $defaultAllowedGroups = [
+        Space::USERGROUP_OWNER,
+        Space::USERGROUP_ADMIN,
+        Space::USERGROUP_MODERATOR,
+        User::USERGROUP_SELF,
+    ];
 
     /**
      * @inheritdoc
@@ -30,38 +46,22 @@ class ManageContent extends \humhub\libs\BasePermission
         User::USERGROUP_SELF,
         User::USERGROUP_FRIEND,
         User::USERGROUP_USER,
-        User::USERGROUP_GUEST
+        User::USERGROUP_GUEST,
     ];
 
     /**
      * @inheritdoc
      */
-    protected $defaultAllowedGroups = [
-        Space::USERGROUP_OWNER,
-        Space::USERGROUP_ADMIN,
-        Space::USERGROUP_MODERATOR,
-        User::USERGROUP_SELF
-    ];
-
-    /**
-     * @inheritdoc
-     */
-    protected $title;
-
-    /**
-     * @inheritdoc
-     */
-    protected $description;
-
-    /**
-     * @inheritdoc
-     */
-    protected $moduleId = 'content';
-
-    public function __construct($config = array())
+    public function getTitle()
     {
-        parent::__construct($config);
-        $this->title = \Yii::t('CommentModule.permissions', 'Manage content');
-        $this->description = \Yii::t('CommentModule.permissions', 'Can manage (e.g. archive, stick or delete) arbitrary content');
+        return Yii::t('CommentModule.permissions', 'Manage content');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getDescription()
+    {
+        return Yii::t('CommentModule.permissions', 'Can manage (e.g. archive, stick, move or delete) arbitrary content');
     }
 }

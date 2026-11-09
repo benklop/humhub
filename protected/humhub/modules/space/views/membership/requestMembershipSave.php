@@ -1,24 +1,23 @@
-<div class="modal-dialog animated fadeIn">
-    <div class="modal-content">
-        <div class="modal-header">
-            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
-            <h4 class="modal-title"
-                id="myModalLabel"><?php echo Yii::t('SpaceModule.views_space_requestMembershipSave', "<strong>Request</strong> space membership"); ?></h4>
-        </div>
-        <div class="modal-body">
+<?php
 
-            <div class="text-center">
-                <?php echo Yii::t('SpaceModule.views_space_requestMembershipSave', 'Your request was successfully submitted to the space administrators.'); ?>
-            </div>
+use humhub\helpers\Html;
+use humhub\widgets\modal\Modal;
+use humhub\widgets\modal\ModalButton;
+use yii\helpers\Json;
 
-        </div>
-        <div class="modal-footer">
-            <hr/>
-            <button type="button" class="btn btn-primary"
-                    data-dismiss="modal"><?php echo Yii::t('SpaceModule.views_space_requestMembershipSave', 'Close'); ?></button>
-        </div>
+/* @var $spaceId int */
+/* @var $newMembershipButton string */
+?>
+
+<?php Modal::beginDialog([
+    'title' => Yii::t('SpaceModule.base', '<strong>Request</strong> Membership'),
+    'footer' => ModalButton::cancel(Yii::t('base', 'Close')),
+]) ?>
+    <div class="text-center">
+        <?= Yii::t('SpaceModule.base', 'Your request was successfully submitted to the space administrators.'); ?>
     </div>
-</div>
-<script type="text/javascript">
-    $('#requestMembershipButton').replaceWith('<?php echo \humhub\modules\space\widgets\MembershipButton::widget(['space' => $space]) ?>');
+<?php Modal::endDialog() ?>
+
+<script <?= Html::nonce() ?>>
+    $('[data-space-request-membership=<?= (int)$spaceId ?>]').replaceWith(<?= Json::htmlEncode($newMembershipButton) ?>);
 </script>

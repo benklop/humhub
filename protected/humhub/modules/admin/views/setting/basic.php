@@ -1,61 +1,60 @@
 <?php
 
+use humhub\helpers\Html;
 use humhub\libs\TimezoneHelper;
-use yii\widgets\ActiveForm;
-use humhub\compat\CHtml;
+use humhub\modules\admin\models\forms\BasicSettingsForm;
+use humhub\modules\ui\icon\widgets\Icon;
+use humhub\widgets\bootstrap\Alert;
+use humhub\widgets\bootstrap\Button;
+use humhub\widgets\form\ActiveForm;
+
+/* @var BasicSettingsForm $model */
 ?>
 
 <div class="panel-body">
-    <h4><?= Yii::t('AdminModule.setting', 'General Settings'); ?></h4>
-    <div class="help-block">
-        <?= Yii::t('AdminModule.setting', 'Here you can configure basic settings of your social network.'); ?>
+    <?= Html::beginForm(['clear-cache']) ?>
+    <?= Button::primary(Yii::t('AdminModule.settings', 'Flush Caches'))->submit()->right() ?>
+    <?= Html::endForm() ?>
+
+    <h4><?= Yii::t('AdminModule.settings', 'General Settings') ?></h4>
+    <div class="text-body-secondary">
+        <?= Yii::t('AdminModule.settings', 'Here you can configure basic settings of your social network.') ?>
     </div>
 
     <br>
 
-    <?php $form = ActiveForm::begin(); ?>
+    <?php $form = ActiveForm::begin(['acknowledge' => true]); ?>
 
-    <?= $form->field($model, 'name'); ?>
-
-    <?= $form->field($model, 'baseUrl'); ?>
-    <p class="help-block"><?= Yii::t('AdminModule.views_setting_index', 'E.g. http://example.com/humhub'); ?></p>
+    <?= $form->field($model, 'name') ?>
+    <?= $form->field($model, 'baseUrl')->textInput(['disabled' => Yii::$app->settings->isFixed('baseUrl')]) ?>
 
     <?php $allowedLanguages = Yii::$app->i18n->getAllowedLanguages(); ?>
     <?php if (count($allowedLanguages) > 1) : ?>
-        <?= $languageDropDown = $form->field($model, 'defaultLanguage')->dropDownList($allowedLanguages, ['data-ui-select2' => '']); ?>
+        <?= $languageDropDown = $form->field($model, 'defaultLanguage')->dropDownList($allowedLanguages) ?>
     <?php endif; ?>
+    <?= $form->field($model, 'defaultTimeZone')->dropDownList(TimezoneHelper::generateList(true), ['disabled' => Yii::$app->settings->isFixed('defaultTimeZone')]) ?>
 
-    <?= $form->field($model, 'timeZone')->dropDownList(TimezoneHelper::generateList(), ['data-ui-select2' => '']); ?>
+    <?= $form->beginCollapsibleFields(Yii::t('AdminModule.settings', 'Dashboard')) ?>
+    <?= $form->field($model, 'tour')->checkbox() ?>
+    <?= $form->field($model, 'dashboardShowProfilePostForm')->checkbox() ?>
+    <?= $form->field($model, 'dashboardShowTopicSidebar')->checkbox() ?>
+    <?= $form->endCollapsibleFields() ?>
 
-    <?= humhub\modules\space\widgets\SpacePickerField::widget([
-        'form' => $form,
-        'model' => $model,
-        'attribute' => 'defaultSpaceGuid',
-        'selection' => $model->defaultSpaces
-    ])?>
+    <?= $form->beginCollapsibleFields(Yii::t('AdminModule.settings', 'Friendship')) ?>
+    <?= $form->field($model, 'enableFriendshipModule')->checkbox() ?>
+    <?= $form->endCollapsibleFields() ?>
 
-    <?= $form->field($model, 'defaultStreamSort')->dropDownList($model->getDefaultStreamSortOptions()); ?>
-
-    <p class="help-block"><?= Yii::t('AdminModule.views_setting_index', 'New users will automatically be added to these space(s).'); ?></p>
-
-
-    <strong><?= Yii::t('AdminModule.views_setting_index', 'Dashboard'); ?></strong>
-    <br>
-    <br>
-    <?= $form->field($model, 'tour')->checkbox(); ?>
-    <?= $form->field($model, 'dashboardShowProfilePostForm')->checkbox(); ?>
-
-    <strong><?= Yii::t('AdminModule.views_setting_index', 'Friendship'); ?></strong>
-    <br>
-    <br>
-    <?= $form->field($model, 'enableFriendshipModule')->checkbox(); ?>
+    <?= $form->beginCollapsibleFields(Yii::t('AdminModule.settings', 'Maintenance mode'), !$model->maintenanceMode) ?>
+    <?= Alert::warning(Yii::t('AdminModule.settings', 'Maintenance mode restricts access to the platform and immediately logs out all users except Admins.'))
+        ->closeButton(false)
+        ->icon(Icon::get('exclamation-triangle')) ?>
+    <?= $form->field($model, 'maintenanceMode')->checkbox() ?>
+    <?= $form->field($model, 'maintenanceModeInfo')->textInput(['placeholder' => Yii::t('AdminModule.settings', 'Add individual info text...')]) ?>
+    <?= $form->endCollapsibleFields() ?>
 
     <hr>
 
-    <?= CHtml::submitButton(Yii::t('AdminModule.views_setting_index', 'Save'), ['class' => 'btn btn-primary', 'data-ui-loader' => ""]); ?>
-
-    <!-- show flash message after saving -->
-    <?php \humhub\widgets\DataSaved::widget(); ?>
+    <?= Html::submitButton(Yii::t('AdminModule.settings', 'Save'), ['class' => 'btn btn-primary', 'data-ui-loader' => ""]) ?>
 
     <?php ActiveForm::end(); ?>
 </div>

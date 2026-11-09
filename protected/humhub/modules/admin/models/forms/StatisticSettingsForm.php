@@ -3,15 +3,15 @@
 namespace humhub\modules\admin\models\forms;
 
 use Yii;
+use yii\base\Model;
 
 /**
  * SettingsForm
  *
  * @since 0.5
  */
-class StatisticSettingsForm extends \yii\base\Model
+class StatisticSettingsForm extends Model
 {
-
     public $trackingHtmlCode;
 
     /**
@@ -41,14 +41,26 @@ class StatisticSettingsForm extends \yii\base\Model
     public function attributeLabels()
     {
         return [
-            'trackingHtmlCode' => Yii::t('AdminModule.forms_StatisticSettingsForm', 'HTML tracking code'),
+            'trackingHtmlCode' => Yii::t('AdminModule.settings', 'HTML tracking code'),
+        ];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function attributeHints()
+    {
+        return [
+            'trackingHtmlCode' => Yii::t('AdminModule.settings', 'Inserted script tags must contain a nonce. e.g. {code}', [
+                'code' => '<code>&lt;script nonce={{nonce}}&gt;</code>',
+            ]),
         ];
     }
 
     /**
      * Saves the form
      *
-     * @return boolean
+     * @return bool
      */
     public function save()
     {

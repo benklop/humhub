@@ -3,10 +3,11 @@
 
 use yii\db\Migration;
 
-class m131023_170135_initial extends Migration {
-
-    public function up() {
-        $this->createTable('like', array(
+class m131023_170135_initial extends Migration
+{
+    public function up()
+    {
+        $this->createTable('like', [
             'id' => 'pk',
             'target_user_id' => 'int(11) NOT NULL',
             'object_model' => 'varchar(100) NOT NULL',
@@ -15,10 +16,11 @@ class m131023_170135_initial extends Migration {
             'created_by' => 'int(11) DEFAULT NULL',
             'updated_at' => 'datetime DEFAULT NULL',
             'updated_by' => 'int(11) DEFAULT NULL',
-                ), '');
+        ], '');
     }
 
-    public function down() {
+    public function down()
+    {
         echo "m131023_170135_initial does not support migration down.\n";
         return false;
     }

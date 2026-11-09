@@ -1,107 +1,128 @@
 <?php
 
 /**
- * HumHub
- * Copyright © 2014 The HumHub Project
- *
- * The texts of the GNU Affero General Public License with an additional
- * permission and of our proprietary license can be found at and
- * in the LICENSE file you have received along with this program.
- *
- * According to our dual licensing model, this program can be used either
- * under the terms of the GNU Affero General Public License, version 3,
- * or under a proprietary license.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
+ * @link https://www.humhub.org/
+ * @copyright Copyright (c) 2017 HumHub GmbH & Co. KG
+ * @license https://www.humhub.com/licences
  */
+
 namespace humhub\modules\space\behaviors;
 
+use humhub\components\Controller;
+use humhub\helpers\Html;
+use humhub\modules\content\components\ContentContainerController;
+use humhub\modules\space\models\Space;
+use humhub\modules\space\widgets\Image;
+use humhub\modules\user\helpers\AuthHelper;
 use Yii;
 use yii\base\Behavior;
-
-
-use humhub\modules\space\models\Space;
+use yii\base\InvalidValueException;
+use yii\helpers\Json;
 use yii\web\HttpException;
-use humhub\components\Controller;
 
 /**
- * SpaceControllerBehavior is a controller behavior used for space modules/controllers.
+ * SpaceController Behavior
  *
- * @author Luke
- * @package humhub.modules_core.space.behaviors
- * @since 0.6
+ * In Space scopes, this behavior will automatically attached to a contentcontainer controller.
+ *
+ * @see Space::controllerBehavior
+ * @see ContentContainerController
+ * @property ContentContainerController $owner the controller
  */
 class SpaceController extends Behavior
 {
+    /**
+     * @var Space
+     */
+    public $space;
 
-    public $space = null;
+    /**
+     * @inheritdoc
+     */
+    public function attach($owner)
+    {
+        parent::attach($owner);
 
+        if (!$this->owner->contentContainer instanceof Space) {
+            throw new InvalidValueException('Invalid contentcontainer type of controller.');
+        }
+
+        $this->space = $this->owner->contentContainer;
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function events()
     {
         return [
-            Controller::EVENT_BEFORE_ACTION => 'beforeAction'
+            Controller::EVENT_BEFORE_ACTION => 'beforeAction',
         ];
     }
 
     /**
-     * Returns the current selected space by parameter guid
-     *
-     * If space doesnt exists or there a no permissions and exception
-     * will thrown.
-     *
-     * @return Space
+     * @param $action
      * @throws HttpException
      */
-    public function getSpace()
+    public function beforeAction($action)
     {
-        if ($this->space != null) {
-            return $this->space;
+        $this->updateLastVisit();
+
+        if (AuthHelper::isGuestAccessEnabled() && Yii::$app->user->isGuest && $this->space->visibility != Space::VISIBILITY_ALL) {
+            throw new HttpException(401, Yii::t('SpaceModule.base', 'You need to login to view contents of this space!'));
         }
 
-        // Get Space GUID by parameter
-        $guid = Yii::$app->request->get('sguid');
-
-        // Try Load the space
-        $this->space = Space::findOne([
-            'guid' => $guid
-        ]);
-        if ($this->space == null)
-            throw new HttpException(404, Yii::t('SpaceModule.behaviors_SpaceControllerBehavior', 'Space not found!'));
-
-        $this->checkAccess();
-        return $this->space;
-    }
-
-    public function checkAccess()
-    {
-        if (Yii::$app->getModule('user')->settings->get('auth.allowGuestAccess') && Yii::$app->user->isGuest && $this->space->visibility != Space::VISIBILITY_ALL) {
-            throw new HttpException(401, Yii::t('SpaceModule.behaviors_SpaceControllerBehavior', 'You need to login to view contents of this space!'));
+        if ($this->space->visibility == Space::VISIBILITY_NONE && !Yii::$app->user->impersonation->canAccessPrivateContent()) {
+            throw new HttpException(404, Yii::t('SpaceModule.base', 'Space is invisible!'));
         }
 
-        // Save users last action on this space
-        $membership = $this->space->getMembership(Yii::$app->user->id);
-        if ($membership != null) {
-            $membership->updateLastVisit();
-        } else {
+        if ($this->getMembership() === null && $this->space->visibility == Space::VISIBILITY_NONE && !Yii::$app->user->isAdmin()) {
+            throw new HttpException(404, Yii::t('SpaceModule.base', 'Space is invisible!'));
+        }
 
-            // Super Admin can always enter
-            if (! Yii::$app->user->isAdmin()) {
-                // Space invisible?
-                if ($this->space->visibility == Space::VISIBILITY_NONE) {
-                    // Not Space Member
-                    throw new HttpException(404, Yii::t('SpaceModule.behaviors_SpaceControllerBehavior', 'Space is invisible!'));
-                }
+        if (empty($this->owner->subLayout)) {
+            $this->owner->subLayout = "@humhub/modules/space/views/space/_layout";
+        }
+
+        $this->owner->prependPageTitle($this->space->name);
+
+        if (Yii::$app->request->isPjax || !Yii::$app->request->isAjax) {
+            $options = [
+                'guid' => $this->owner->contentContainer->guid,
+                'name' => Html::encode($this->owner->contentContainer->name),
+                'archived' => $this->space->isArchived(),
+                'image' => Image::widget([
+                    'space' => $this->owner->contentContainer,
+                    'width' => 32,
+                    'htmlOptions' => [
+                        'class' => 'current-space-image',
+                    ],
+                ]),
+            ];
+
+            if (Yii::$app->request->isPjax) {
+                $this->owner->view->registerJs('humhub.modules.space.setSpace(' . Json::encode($options) . ', true);');
             }
         }
     }
 
-    public function beforeAction($action)
+    protected function updateLastVisit()
     {
-        $this->owner->prependPageTitle($this->space->name);
+        $membership = $this->getMembership();
+        if ($membership != null) {
+            $membership->updateLastVisit();
+        }
     }
-}
 
-?>
+    protected function getMembership()
+    {
+        // ToDo: Cache
+        return $this->space->getMembership(Yii::$app->user->id);
+    }
+
+    public function getSpace()
+    {
+        return $this->space;
+    }
+
+}

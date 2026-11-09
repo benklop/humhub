@@ -1,14 +1,10 @@
 <?php
 
-use yii\helpers\Html;
+use humhub\helpers\Html;
 use yii\helpers\Url;
-
-$this->registerJsVar('fileuploader_error_modal_title', Yii::t('FileModule.widgets_FileUploadButtonWidget', '<strong>Upload</strong> error'));
-$this->registerJsVar('fileuploader_error_modal_btn_close', Yii::t('FileModule.widgets_FileUploadButtonWidget', 'Close'));
-$this->registerJsVar('fileuploader_error_modal_errormsg', Yii::t('FileModule.widgets_FileUploadButtonWidget', 'Could not upload File:'));
 ?>
 
-<?php echo Html::hiddenInput($this->context->fileListFieldName, '', array('id' => "fileUploaderHiddenField_" . $uploaderId)); ?>
+<?php echo Html::hiddenInput($this->context->fileListFieldName, '', ['id' => "fileUploaderHiddenField_" . $uploaderId]); ?>
 
 <style>
     .fileinput-button {
@@ -29,23 +25,18 @@ $this->registerJsVar('fileuploader_error_modal_errormsg', Yii::t('FileModule.wid
         cursor: pointer;
     }
 </style>
-<span class="btn btn-info fileinput-button tt" data-toggle="tooltip" data-placement="bottom" title=""
-      data-original-title="<?php echo Yii::t('FileModule.widgets_views_fileUploadButton', 'Upload files'); ?>">
+<span class="btn btn-light fileinput-button tt" data-bs-toggle="tooltip" data-placement="bottom" title=""
+      data-bs-title="<?php echo Yii::t('FileModule.base', 'Upload files'); ?>">
     <i class="fa fa-cloud-upload"></i>
 
     <input id="fileUploaderButton_<?php echo $uploaderId; ?>" type="file" name="files[]"
-           data-url="<?php echo Url::to(['/file/file/upload', 'objectModel' => $objectModel, 'objectId' => $objectId]); ?>" multiple>
+           data-url="<?php echo Url::to(['/file/file/upload', 'objectModel' => $objectModel, 'objectId' => $objectId]); ?>"
+           multiple>
 </span>
 
-<script>
+<script <?= Html::nonce() ?>>
     $(function () {
         'use strict';
         installUploader("<?php echo $uploaderId; ?>");
-
-        // fixing staying tooltip while opening file browser window
-        $('.fileinput-button').click(function () {
-            $('.tt').tooltip('hide');
-        })
     })
-
 </script>

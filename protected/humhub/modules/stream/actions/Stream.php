@@ -2,20 +2,24 @@
 
 /**
  * @link https://www.humhub.org/
- * @copyright Copyright (c) 2016 HumHub GmbH & Co. KG
+ * @copyright Copyright (c) 2018 HumHub GmbH & Co. KG
  * @license https://www.humhub.com/licences
  */
 
 namespace humhub\modules\stream\actions;
 
-use humhub\modules\content\components\ContentActiveRecord;
+use humhub\components\Request;
+use humhub\modules\stream\events\StreamResponseEvent;
+use humhub\modules\user\models\User;
+use Throwable;
 use Yii;
 use yii\base\Action;
 use yii\base\Exception;
-use humhub\modules\content\models\Content;
-use humhub\modules\user\models\User;
+use humhub\modules\content\widgets\stream\StreamEntryOptions;
 use humhub\modules\stream\models\StreamQuery;
-use yii\base\ActionEvent;
+use humhub\modules\stream\models\WallStreamQuery;
+use humhub\modules\content\models\Content;
+use yii\base\InvalidConfigException;
 
 /**
  * Stream is the basic action for content streams.
@@ -37,54 +41,49 @@ use yii\base\ActionEvent;
  */
 abstract class Stream extends Action
 {
+    /**
+     * @event Event triggered before stream filter handlers are applied
+     * This can be used for adding filters.
+     * @since 1.7
+     */
+    public const EVENT_BEFORE_APPLY_FILTERS = 'beforeApplyFilters';
 
     /**
-     * @event ActionEvent Event triggered before this action is run.
-     * This can be used for example to customize [[activeQuery]] before it gets executed.
-     * @since 1.1.1
+     * @event Event triggered after stream filter handlers are applied
+     * This can be used for last modifications to the query.
+     * @since 1.7
      */
-    const EVENT_BEFORE_RUN = 'beforeRun';
+    public const EVENT_AFTER_APPLY_FILTERS = 'afterApplyFilters';
 
     /**
-     * @event ActionEvent Event triggered after this action is run.
-     * @since 1.1.1
+     * @event Event triggered after query fetch, can be used to manipulate the
+     * stream response. E.g. inject additional entries.
+     * @since 1.7
      */
-    const EVENT_AFTER_RUN = 'afterRun';
+    public const EVENT_AFTER_FETCH = 'afterQueryFetch';
 
     /**
-     * Constants used for sorting
+     * Sort by creation sort value
      */
-    const SORT_CREATED_AT = 'c';
-    const SORT_UPDATED_AT = 'u';
+    public const SORT_CREATED_AT = 'c';
 
     /**
-     * Modes
+     * Sort by update sort value
      */
-    const MODE_NORMAL = "normal";
-    const MODE_ACTIVITY = "activity";
+    public const SORT_UPDATED_AT = 'u';
 
     /**
-     * Maximum wall entries per request
+     * Optional stream user if no user is specified, the current logged in user will be used.
+     *
+     * @var User
      */
-    const MAX_LIMIT = 50;
-
-    /**
-     * @var string
-     */
-    public $mode;
+    public $user;
 
     /**
      * Used to load single content entries.
      * @since 1.2
      */
     public $contentId;
-
-    /**
-     * First wall entry id to deliver
-     *
-     * @var int
-     */
-    public $from;
 
     /**
      * Sorting Mode
@@ -100,29 +99,20 @@ abstract class Stream extends Action
     public $limit = 4;
 
     /**
-     * Filters
-     *
-     * @var array
+     * Filters - A list of active filter id's (e.g. `visibility_private`)
+     * @var string[]
      */
     public $filters = [];
 
     /**
-     * @var \yii\db\ActiveQuery
-     *
-     * @deprecated since version 1.2 use $streamQuery->query() instead
+     * Can be used to append or overwrite filter handlers without the need of overwriting the StreamQuery class.
+     * @var array
+     * @since 1.7
      */
-    public $activeQuery;
+    public $filterHandlers = [];
 
     /**
-     * Optional stream user
-     * if no user is specified, the current logged in user will be used.
-     *
-     * @var User
-     */
-    public $user;
-
-    /**
-     * Used to filter the stream content entrie classes against a given array.
+     * Used to filter the stream content entry classes against a given array.
      * @var array
      * @since 1.2
      */
@@ -137,7 +127,7 @@ abstract class Stream extends Action
 
     /**
      * Stream query model instance
-     * @var \humhub\modules\stream\models\StreamSuppressQuery
+     * @var StreamQuery
      * @since 1.2
      */
     protected $streamQuery;
@@ -145,247 +135,287 @@ abstract class Stream extends Action
     /**
      * @var string suppress similar content types in a row
      */
-    public $streamQueryClass = 'humhub\modules\stream\models\StreamSuppressQuery';
+    public $streamQueryClass = WallStreamQuery::class;
+
+    /**
+     * @var string can be used in special streams to force a specific stream entry widget to be used when rendering
+     */
+    public $streamEntryWidgetClass;
+
+    /**
+     * @var StreamEntryOptions default render option for stream entries initialized by [[initStreamEntryOptions()]]
+     */
+    public $streamEntryOptions;
+
+    /**
+     * @var string can be used to set view context in request
+     */
+    public $viewContext;
 
     /**
      * @inheritdoc
+     * @throws InvalidConfigException
      */
     public function init()
     {
-        $this->excludes = array_merge($this->excludes, Yii::$app->getModule('stream')->streamExcludes);
+        parent::init();
 
-        $streamQueryClass = $this->streamQueryClass;
-        $this->streamQuery = $streamQueryClass::find($this->includes, $this->excludes)->forUser($this->user);
+        if (!$this->user) {
+            $this->user = Yii::$app->user->identity;
+        }
 
-        // Read parameters
+        if (!$this->isSingleContentRequest()) {
+            $this->excludes = array_merge($this->excludes, Yii::$app->getModule('stream')->streamExcludes);
+        }
+
+        $this->streamQuery = $this->initQuery();
+
         if (!Yii::$app->request->isConsoleRequest) {
             $this->streamQuery->load(Yii::$app->request->get());
 
-            if (Yii::$app->getRequest()->get('mode', $this->mode) === self::MODE_ACTIVITY) {
-                $this->mode = self::MODE_ACTIVITY;
-            }
-
-            foreach (explode(',', Yii::$app->getRequest()->get('filters', "")) as $filter) {
-                $this->streamQuery->addFilter(trim($filter));
+            if (!$this->viewContext) {
+                $this->viewContext = Yii::$app->request->get('viewContext');
             }
         }
 
-        $this->setActionSettings();
+        $this->beforeApplyFilters();
 
-        // Build query and set activeQuery.
-        $this->activeQuery = $this->streamQuery->query(true);
-        $this->from = $this->streamQuery->from;
-        $this->user = $this->streamQuery->user;
+        $this->streamQuery->query(true);
 
-        // Update action filters with merged request and configured action filters.
-        $this->filters = $this->streamQuery->filters;
-
-        // Append additional filter of subclasses.
-        $this->setupCriteria();
-        $this->setupFilters();
+        $this->afterApplyFilters();
     }
 
-    protected function setActionSettings()
+    /**
+     * Initializes the StreamQuery instance. By default [[streamQueryClass]] property will be used to initialize the instance.
+     *
+     * Subclasses may overwrite this function in order to add or remove custom stream filters or set other default
+     * settings of your StreamQuery instance.
+     *
+     * Example usage:
+     *
+     * ```php
+     * protected function initQuery($options = [])
+     * {
+     *   $query = parent::initQuery($options);
+     *   $query->addFilterHandler(new CustomStreamFilter());
+     *   return $query;
+     * }
+     * ```
+     *
+     * @param array $options instance attribute options
+     * @return StreamQuery
+     * @throws InvalidConfigException
+     * @since 1.6
+     */
+    protected function initQuery($options = [])
     {
+        $options['class'] = $this->streamQueryClass;
+        $instance = Yii::createObject($options);
+        $instance->forUser($this->user);
+        return $instance;
+    }
+
+    /**
+     * This function is called right before the StreamQuery is built and all filters are applied.
+     * At this point the StreamQuery has already been loaded with request data.
+     * Subclasses may overwrite this function in order to do some last settings on the StreamQuery instance.
+     *
+     * When overriding this method, make sure you call the parent implementation like the following:
+     *
+     * ```php
+     * public function beforeApplyFilters()
+     * {
+     *     // Add some filters here
+     *
+     *     parent::beforeApplyFilters();
+     * }
+     * ```
+     *
+     * When overriding this method, make sure you call the parent implementation at the beginning of your function.
+     * @throws InvalidConfigException
+     */
+    protected function beforeApplyFilters()
+    {
+        $this->streamQuery->addFilterHandlers($this->filterHandlers);
+
         // Merge configured filters set for this action with request filters.
         $this->streamQuery->addFilter($this->filters);
+
+        $this->streamQuery->includes($this->includes);
+        $this->streamQuery->excludes($this->excludes);
+        $this->streamQuery->forUser($this->user);
 
         // Overwrite limit if there was no setting in the request.
         if (empty($this->streamQuery->limit)) {
             $this->streamQuery->limit = $this->limit;
         }
 
+        // Overwrite sort if there was no setting in the request.
         if (empty($this->streamQuery->sort)) {
             $this->streamQuery->sort = $this->sort;
         }
 
-        if ($this->mode == self::MODE_ACTIVITY) {
-            $this->streamQuery->channel(StreamQuery::CHANNEL_ACTIVITY);
-            if ($this->streamQuery->user) {
-                $this->streamQuery->query()->andWhere('content.created_by != :userId', [':userId' => $this->streamQuery->user->id]);
-            }
+        $this->trigger(self::EVENT_BEFORE_APPLY_FILTERS);
+    }
+
+    /**
+     * This function is called after the StreamQuery was build and all filters are applied. At this point changing
+     * most StreamQuery settings as filters won't have any effect. Since the query is not yet executed the
+     * StreamQuery->query() can still be used for custom query conditions.
+     *
+     * When overriding this method, make sure you call the parent implementation like the following:
+     *
+     * ```php
+     * public function afterApplyFilters()
+     * {
+     *     // Manipulate query...
+     *
+     *     parent::afterApplyFilters();
+     * }
+     * ```
+     *
+     * When overriding this method, make sure you call the parent implementation at the beginning of your function.
+     */
+    protected function afterApplyFilters()
+    {
+        // Update action filters with merged request and configured action filters.
+        $this->filters = $this->streamQuery->filters;
+        $this->user = $this->streamQuery->user;
+
+        if (!$this->streamEntryOptions) {
+            $this->streamEntryOptions = $this->initStreamEntryOptions();
         }
+
+        if ($this->streamEntryWidgetClass) {
+            $this->streamEntryOptions->overwriteWidgetClass($this->streamEntryWidgetClass);
+        }
+
+        $this->trigger(self::EVENT_AFTER_APPLY_FILTERS);
     }
 
-    public function setupCriteria()
+    /**
+     * @return StreamEntryOptions
+     */
+    protected function initStreamEntryOptions()
     {
-        // Can be overwritten by subtypes to add additional criterias.
-    }
+        $instance = new StreamEntryOptions();
 
-    public function setupFilters()
-    {
-        // Can be overwritten by subtypes to add additional filters.
+        if ($this->viewContext) {
+            $instance->viewContext($this->viewContext);
+        }
+
+        return $instance;
     }
 
     /**
      * @inheritdoc
+     * @throws Throwable
      */
     public function run()
     {
-        Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
-        $output = [];
+        $response = new StreamResponse($this->streamQuery);
 
-        $output['content'] = [];
+        $entries = $this->streamQuery->all();
 
-        $i = 0;
-        foreach ($this->streamQuery->all() as $content) {
-            try {
-                $output['content'][$content->id] = static::getContentResultEntry($content);
-            } catch (\Exception $e) {
-                // Don't kill the stream action in prod environments in case the rendering of an entry fails.
-                if (YII_ENV_PROD) {
-                    Yii::error($e);
-                } else {
-                    throw $e;
-                }
-            }
-            $i++;
-        }
-
-        $output['isLast'] = ($i < $this->activeQuery->limit);
-        $output['contentOrder'] = array_keys($output['content']);
-        $output['lastContentId'] = end($output['contentOrder']);
-
-        if ($this->streamQuery instanceof \humhub\modules\stream\models\StreamSuppressQuery && !$this->streamQuery->isSingleContentQuery()) {
-            $output['contentSuppressions'] = $this->streamQuery->getSuppressions();
-            $output['lastContentId'] = $this->streamQuery->getLastContentId();
-        }
-
-        return $output;
-    }
-
-    /**
-     * Is inital stream requests (show first stream content)
-     *
-     * @return boolean Is initial request
-     */
-    protected function isInitialRequest()
-    {
-        return ($this->from == '' && $this->limit != 1);
-    }
-
-    /**
-     * Renders the wallEntry of the given ContentActiveRecord.
-     *
-     * If setting $partial to false this function will use the renderAjax function instead of renderPartial, which
-     * will directly append all dependencies to the result and if not used in a real ajax request will also append
-     * the Layoutadditions.
-     *
-     * Render options can be provided by setting the $options array. This array will be passed to the WallEntryWidget implementation
-     * of the given ContentActiveRecord. The render option array can for example be used to deactivate the rendering of the the WallEntryControls, Addons etc.
-     *
-     * The used jsWidget implementation of the WallEntry can be overwritten by $options['jsWidget'].
-     *
-     * e.g:
-     *
-     * ```php
-     * Stream::renderEntry($myModel, [
-     *      'jsWidget' => 'my.namespace.StreamEntry',
-     *      'renderControls' => false
-     * ]);
-     * ```
-     *
-     * The previous example deactivated the rendering of the WallEntryControls and set a specific property of the WallEntryWidget related
-     * to $myModel.
-     *
-     * @param ContentActiveRecord $record content record instance
-     * @param $options array render options
-     * @param boolean $partial whether or not to use renderPartial over renderAjax
-     * @return string rendered wallentry
-     */
-    public static function renderEntry(ContentActiveRecord $record, $options =  [], $partial = true)
-    {
-        // TODO should be removed in next major version
-        // Compatibility with pre 1.2.2
-        if (is_bool($options)) {
-            $partial = $options;
-            $options = [];
-        }
-
-        if (!$record->wallEntryClass || !$record->content) {
-            return "";
-        }
-
-        if (isset($options['jsWidget'])) {
-            $jsWidget = $options['jsWidget'];
-            unset($options['jsWidget']);
+        if (!empty($entries)) {
+            $this->addResponseEntries($entries, $response);
         } else {
-            $jsWidget = $record->getWallEntryWidget()->jsWidget;
+            $this->handleEmptyResponse($response);
         }
 
-        if ($partial) {
-            return Yii::$app->controller->renderPartial('@humhub/modules/content/views/layouts/wallEntry', [
-                'content' => $record->getWallOut($options),
-                'jsWidget' => $jsWidget,
-                'entry' => $record->content
-            ]);
-        } else {
-            return Yii::$app->controller->renderAjax('@humhub/modules/content/views/layouts/wallEntry', [
-                'content' => $record->getWallOut($options),
-                'jsWidget' => $jsWidget,
-                'entry' => $record->content
-            ]);
-        }
+        $this->trigger(static::EVENT_AFTER_FETCH, new StreamResponseEvent(['response' => $response]));
+
+        return $response->asJson();
     }
 
     /**
-     * Returns an array contains all informations required to display a content
-     * in stream.
+     * Adds entries to the response.
      *
-     * @param Content $content the content
-     *
-     * @return array
+     * @param StreamResponse $response
      * @throws Exception
+     * @throws Throwable
+     * @since 1.7
      */
-    public static function getContentResultEntry(Content $content)
+    private function addResponseEntries($entries, StreamResponse $response)
     {
-        $result = [];
-
-        // Get Underlying Object (e.g. Post, Poll, ...)
-        $underlyingObject = $content->getPolymorphicRelation();
-        if ($underlyingObject === null) {
-            throw new Exception('Could not get contents underlying object! - contentid: ' . $content->id);
+        foreach ($entries as $content) {
+            $streamEntry = $this->getStreamEntryResult($content, $this->streamEntryOptions);
+            if ($streamEntry) {
+                $response->addEntry($streamEntry);
+            }
         }
-
-        // Fix for newly created content
-        if ($content->created_at instanceof \yii\db\Expression) {
-            $content->created_at = date('Y-m-d G:i:s');
-            $content->updated_at = $content->created_at;
-        }
-
-        $underlyingObject->populateRelation('content', $content);
-
-        $result['output'] = self::renderEntry($underlyingObject, false);
-        $result['pinned'] = (boolean) $content->pinned;
-        $result['archived'] = (boolean) $content->archived;
-        $result['guid'] = $content->guid;
-        $result['id'] = $content->id;
-
-        return $result;
     }
 
     /**
-     * This method is called right before `run()` is executed.
-     * You may override this method to do preparation work for the action run.
-     * If the method returns false, it will cancel the action.
+     * Adds an error message to the stream response in certain cases.
      *
-     * @return boolean whether to run the action.
+     * @param StreamResponse $response
+     * @throws Exception
+     * @throws Throwable
+     * @since 1.7
      */
-    protected function beforeRun()
+    private function handleEmptyResponse(StreamResponse $response)
     {
-        $event = new ActionEvent($this);
-        $this->trigger(self::EVENT_BEFORE_RUN, $event);
-        return $event->isValid;
+        if ($this->streamQuery->isSingleContentQuery()) {
+            $content = Content::findOne(['id' => $this->streamQuery->contentId]);
+            if (!$content) {
+                $response->setError(400, Yii::t('StreamModule.base', 'The content could not be found.'));
+            } elseif (!$content->canView()) {
+                $response->setError(403, Yii::t('StreamModule.base', 'You are not allowed to view this content.'));
+            }
+        }
+        // Otherwise the content could not be found due to active filter
     }
 
     /**
-     * This method is called right after `run()` is executed.
-     * You may override this method to do post-processing work for the action run.
+     * @param Content $content
+     * @param StreamEntryOptions|null $options
+     * @return array|null
+     * @throws Throwable
      */
-    protected function afterRun()
+    private function getStreamEntryResult(Content $content, ?StreamEntryOptions $options = null)
     {
-        $event = new ActionEvent($this);
-        $this->trigger(self::EVENT_AFTER_RUN, $event);
+        try {
+            if (!$content->getModel()) {
+                throw new Exception('Could not get contents underlying object! - contentid: ' . $content->id);
+            }
+
+            return StreamEntryResponse::getAsArray($content, $options);
+        } catch (Throwable $e) {
+            // Don't kill the stream action in prod environments in case the rendering of an entry fails.
+            if (YII_ENV_PROD) {
+                Yii::error($e);
+            } else {
+                throw $e;
+            }
+        }
+
+        return null;
     }
 
+    /**
+     * @return StreamQuery
+     */
+    public function getStreamQuery()
+    {
+        return $this->streamQuery;
+    }
+
+    /**
+     * @return bool
+     */
+    private function isSingleContentRequest()
+    {
+        if (Yii::$app->request->isConsoleRequest) {
+            return false;
+        }
+
+        if (!(Yii::$app->request instanceof Request)) {
+            return false;
+        }
+
+        $streamQueryParams = Yii::$app->request->getQueryParam('StreamQuery');
+
+        return !empty($streamQueryParams['contentId']);
+    }
 }
